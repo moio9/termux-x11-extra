@@ -7,7 +7,6 @@ import static android.view.KeyEvent.*;
 import static android.view.WindowManager.LayoutParams.*;
 import static com.termux.x11.CmdEntryPoint.ACTION_START;
 import static com.termux.x11.LoriePreferences.ACTION_PREFERENCES_CHANGED;
-import static com.termux.x11.VirtualKeyMapperActivity.getDisplayId;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
@@ -22,7 +21,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
-import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -55,7 +53,6 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -63,48 +60,24 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.math.MathUtils;
 import androidx.viewpager.widget.ViewPager;
 
-import com.termux.x11.input.GamepadInputHandler;
 import com.termux.x11.input.InputEventSender;
 import com.termux.x11.input.InputStub;
 import com.termux.x11.input.TouchInputHandler;
 import com.termux.x11.input.VirtualKeyHandler;
-import com.termux.x11.ipc.GamepadIpc;
 import com.termux.x11.utils.FullscreenWorkaround;
 import com.termux.x11.utils.KeyInterceptor;
 import com.termux.x11.utils.SamsungDexUtils;
 import com.termux.x11.utils.TermuxX11ExtraKeys;
 import com.termux.x11.utils.X11ToolbarViewPager;
 
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @SuppressLint("ApplySharedPref")
 @SuppressWarnings({"deprecation", "unused"})
 public class MainActivity extends AppCompatActivity {
-    private GamepadIpc ipc;
-    private final GamepadIpc.GamepadState gpState = new GamepadIpc.GamepadState().neutral();
-
-    private final GamepadIpc.Listener ipcListener = new GamepadIpc.Listener() {
-        @Override public int onGetGamepadRequested() {
-            // Lasă ambele să se atașeze dacă vor
-            return GamepadIpc.FLAG_INPUT_TYPE_XINPUT | GamepadIpc.FLAG_INPUT_TYPE_DINPUT;
-        }
-        @Override public void onRumble(int l, int r, int durMs) {
-            if (gamepadHandler != null) gamepadHandler.rumble(l, r, durMs);
-        }
-        @Override public void onRelease() {
-            if (gamepadHandler != null) gamepadHandler.cancelRumble();
-        }
-        @Override public void onLog(String msg) { android.util.Log.d("GamepadIPC", msg); }
-    };
-
-
-    public GamepadIpc getGamepadIpc() { return ipc; }
-    public GamepadIpc.GamepadState getGamepadState() { return gpState; }
-
-    public GamepadInputHandler getGamepadHandler() { return gamepadHandler; }
-
     public static final String ACTION_STOP = "com.termux.x11.ACTION_STOP";
     public static final String ACTION_CUSTOM = "com.termux.x11.ACTION_CUSTOM";
 
@@ -121,22 +94,10 @@ public class MainActivity extends AppCompatActivity {
     private static boolean externalKeyboardConnected = false;
     private View.OnKeyListener mLorieKeyListener;
     private boolean filterOutWinKey = false;
-    boolean useTermuxEKBarBehaviour = false;
+    private boolean useTermuxEKBarBehaviour = false;
     private boolean isInPictureInPictureMode = false;
 
     public static Prefs prefs = null;
-    private static int parseIntOr(String s, int def){ try { return Integer.parseInt(s.trim()); } catch(Exception e){ return def; } }
-    private static int clamp(int v, int lo, int hi){ return Math.max(lo, Math.min(hi, v)); }
-    private static int clampPort(String s, int def){ return clamp(parseIntOr(s, def), 1, 65535); }
-    private static int clampId(String s, int def){ return clamp(parseIntOr(s, def), 0, 0x7fffffff); }
-    private String  currHost;
-    private int     currClientPort, currServerPort, currGpId, currStateHz;
-    private boolean currForwardX11;
-    private String  currInputType, currMode, currVibrateMode;
-    private int     currVibrateStrength;
-    private boolean isBooting = true;
-    private String currGpName = "Termux-X11 Pad";
-
 
     private static boolean oldFullscreen = false, oldHideCutout = false;
     private final SharedPreferences.OnSharedPreferenceChangeListener preferencesChangedListener = (__, key) -> onPreferencesChanged(key);
@@ -191,8 +152,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private VirtualKeyHandler virtualKeyHandler;
-    private GamepadInputHandler gamepadHandler;
-
 
     @Override
     @SuppressLint({"AppCompatMethod", "ObsoleteSdkInt", "ClickableViewAccessibility", "WrongConstant", "UnspecifiedRegisterReceiverFlag"})
@@ -213,90 +172,26 @@ public class MainActivity extends AppCompatActivity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         setContentView(R.layout.main_activity);
 
-
         frm = findViewById(R.id.frame);
-        findViewById(R.id.command_button).setOnClickListener((l) -> {
-            Intent launchIntent = getPackageManager().getLaunchIntentForPackage("com.termux");
-            if (launchIntent != null) {
-                startActivity(launchIntent);
-            } else {
-                Toast.makeText(MainActivity.this, "Termux is not installed.", Toast.LENGTH_LONG).show();
-            }
-            try {
-                Thread.sleep(1500); // Wait for app to launch
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            Intent intent = new Intent();
-            intent.setClassName("com.termux", "com.termux.app.RunCommandService");
-            intent.setAction("com.termux.RUN_COMMAND");
-            intent.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bootx");
-            intent.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", new String[]{});
-//            intent.putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home");
-            intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", false);
-            try {
-                getApplicationContext().startService(intent);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
-
-        findViewById(R.id.preferences_button).setOnClickListener((l) -> startActivity(new Intent(this, LoriePreferences.class) {{
-            setAction(Intent.ACTION_MAIN);
-        }}));
+        findViewById(R.id.preferences_button).setOnClickListener((l) -> startActivity(new Intent(this, LoriePreferences.class) {{ setAction(Intent.ACTION_MAIN); }}));
         findViewById(R.id.help_button).setOnClickListener((l) -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/termux/termux-x11/blob/master/README.md#running-graphical-applications"))));
         findViewById(R.id.exit_button).setOnClickListener((l) -> finish());
-        findViewById(R.id.support_button).setOnClickListener((l) -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/moio9/termux-x11-extra"))));
 
         LorieView lorieView = findViewById(R.id.lorieView);
         View lorieParent = (View) lorieView.getParent();
 
         mInputHandler = new TouchInputHandler(this, new InputEventSender(lorieView));
         mLorieKeyListener = (v, k, e) -> {
-            final InputDevice dev = e.getDevice();
-            final int src = (dev != null) ? dev.getSources() : 0;
-
-            final boolean hasKb   = (src & InputDevice.SOURCE_KEYBOARD) != 0;
-            final boolean hasGp   = (src & (InputDevice.SOURCE_GAMEPAD | InputDevice.SOURCE_JOYSTICK)) != 0;
-            final boolean hasDpad = (src & InputDevice.SOURCE_DPAD) != 0;
-
-            // chei „clar” de gamepad (A/B/X/Y/L1/R1/etc)
-            final boolean isGpBtn = KeyEvent.isGamepadButton(k);
-
-            // DPAD: tratează ca gamepad doar dacă vine de pe un device care NU e și tastatură
-            // (multe controllere au GAMEPAD/JOYSTICK/DPAD dar NU KEYBOARD; tastaturile reale au KEYBOARD)
-            final boolean isDpadKey =
-                    (k == KeyEvent.KEYCODE_DPAD_UP
-                            || k == KeyEvent.KEYCODE_DPAD_RIGHT
-                            || k == KeyEvent.KEYCODE_DPAD_DOWN
-                            || k == KeyEvent.KEYCODE_DPAD_LEFT
-                            || k == KeyEvent.KEYCODE_DPAD_CENTER);
-
-            final boolean fromController =
-                    (isGpBtn && (hasGp || hasDpad)) ||
-                            (isDpadKey && !hasKb && (hasGp || hasDpad));
-
-            if (fromController && gamepadHandler != null) {
-                if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
-                    gamepadHandler.handleKeyDown(k, e);
-                    return true;
-                } else if (e.getAction() == KeyEvent.ACTION_UP) {
-                    gamepadHandler.handleKeyUp(k, e);
-                    return true;
-                } else {
-                    return true;
-                }
-            }
-
-            // altfel e tastatură (inclusiv săgeți de la tastatură reală) -> lasă pe fluxul normal
+            InputDevice dev = e.getDevice();
             boolean result = mInputHandler.sendKeyEvent(e);
 
-            // nu „șterge” special keys decât pentru intrări de la tastatură
-            if (useTermuxEKBarBehaviour && mExtraKeys != null && hasKb)
+            // Do not steal dedicated buttons from a full external keyboard.
+            if (useTermuxEKBarBehaviour && mExtraKeys != null && (dev == null || dev.isVirtual()))
                 mExtraKeys.unsetSpecialKeys();
 
             return result;
         };
+
         lorieParent.setOnTouchListener((v, e) -> {
             // Avoid batched MotionEvent objects and reduce potential latency.
             // For reference: https://developer.android.com/develop/ui/views/touch-and-input/stylus-input/advanced-stylus-features#rendering.
@@ -348,6 +243,7 @@ public class MainActivity extends AppCompatActivity {
         onPreferencesChanged("");
 
         toggleExtraKeys(false, false);
+        checkRestartInput();
 
         initStylusAuxButtons();
         initMouseAuxButtons();
@@ -355,244 +251,43 @@ public class MainActivity extends AppCompatActivity {
         if (SDK_INT >= VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PERMISSION_GRANTED
                 && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 0);
+            requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 0);
         }
-
-
-        if (SDK_INT >= VERSION_CODES.M
-                && checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
-            Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-            intent.setData(Uri.parse("package:" + getPackageName()));
-            startActivity(intent);
-            Toast.makeText(this, "Please grant permission 'Run commands in Termux environment'", Toast.LENGTH_LONG).show();
-        }
-
 
         onReceiveConnection(getIntent());
         findViewById(android.R.id.content).addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> makeSureHelpersAreVisibleAndInScreenBounds());
 
+        // Obținem containerul principal
         FrameLayout mainContainer = findViewById(R.id.frame);
         if (mainContainer == null) {
+            Log.e("DEBUG", "❌ Eroare: containerul principal nu a fost găsit!");
             return;
         }
 
-        readConfigFromPrefs();
-        startIpcFromCurrentConfig(lorieView);
-        refreshLoadedPreset(true);
-        isBooting = false;
+// Instanțiem VirtualKeyHandler
+        VirtualKeyHandler virtualKeyHandler = new VirtualKeyHandler(this);
 
-        onPreferencesChangedCallback();
-        maybeReloadGamepad(getLorieView());
-    }
+// Încărcăm butoanele virtuale
+        List<Button> buttons = VirtualKeyMapperActivity.loadButtons(this, virtualKeyHandler);
 
-    private void readConfigFromPrefs() {
-        String host = prefs != null && prefs.gamepadHost.get() != null ? prefs.gamepadHost.get() : "127.0.0.1";
-        currHost = host.isEmpty() ? "127.0.0.1" : host;
+// Procesăm fiecare buton
+        for (Button button : buttons) {
+            // Setăm input-ul pentru buton
+            virtualKeyHandler.setupInputForButton(button);
 
-        currClientPort      = clampPort(prefs != null ? prefs.gamepadPortRumble.get() : "4600", 4600); // DLL -> Android (GET/RUMBLE)
-        currGpId            = clampId  (prefs != null ? prefs.gamepadID.get()        : "1", 1);
-        currStateHz         = Math.max(10, Math.min(500, prefs != null ? prefs.gamepadStateHz.get() : 125));
-        currForwardX11      = (prefs != null) && prefs.gamepadForwardX11.get();
-        currInputType       = (prefs != null && prefs.gamepadInputType.get()!=null) ? prefs.gamepadInputType.get() : "xinput";
-        currMode            = (prefs != null && prefs.gamepadMode.get()!=null)       ? prefs.gamepadMode.get()      : "mapped";
-        currVibrateMode     = (prefs != null && prefs.gamepadVibrate.get()!=null)    ? prefs.gamepadVibrate.get()   : "system";
-        currVibrateStrength = (prefs != null) ? prefs.gamepadVibrateStrength.get() : 128;
-        currGpName          = (prefs != null) ? prefs.gamepadName.get() : "Termux-X11 Pad";
-    }
-
-    private void maybeReloadGamepad(LorieView lorieView) {
-        if (lorieView == null) return;
-        if (prefs == null) return;
-
-        String  oldHost = currHost;
-        int     oldCli  = currClientPort, oldSrv = currServerPort, oldId = currGpId, oldHz = currStateHz;
-        String  oldIn   = currInputType, oldMode = currMode;
-        boolean oldFwd  = currForwardX11;
-        String  oldVibMode = currVibrateMode;
-        int     oldVibStr  = currVibrateStrength;
-
-        readConfigFromPrefs();
-
-        boolean needIpcRestart =
-                !currHost.equals(oldHost) ||
-                        currClientPort != oldCli ||
-                        currServerPort != oldSrv ||
-                        currGpId       != oldId ||
-                        currStateHz    != oldHz ||
-                        !currInputType.equals(oldIn) ||
-                        !currMode.equals(oldMode);
-
-        if (needIpcRestart) {
-            startIpcFromCurrentConfig(lorieView);
-            refreshLoadedPreset(true);
-        } else {
-            if (ipc != null) ipc.setPumpHz(currStateHz);
-            if (gamepadHandler != null) gamepadHandler.reloadPrefs(prefs);
+            // Adăugăm butonul în container
+            mainContainer.addView(button);
         }
 
-        if (gamepadHandler != null && (oldFwd != currForwardX11 ||
-                !oldVibMode.equals(currVibrateMode) || oldVibStr != currVibrateStrength)) {
-            gamepadHandler.reloadPrefs(prefs);
-        }
-
+        Log.d("DEBUG", "✅ Toate butoanele virtuale au fost încărcate și configurate!");
     }
 
-    private void startIpcFromCurrentConfig(LorieView lorieView) {
-        String mode = prefs.gamepadInputType.get(); // "all" / "xinput" / "dinput" / "none"
-        String host = prefs.gamepadHost.get();      // "127.0.0.1"
-        int base    = Integer.parseInt(prefs.gamepadPortRumble.get()); // ex 4600
-        int gpId    = Integer.parseInt(prefs.gamepadID.get());         // ex 1
-        int stateHz = prefs.gamepadStateHz.get();
-
-        GamepadIpc.HandshakeFormat fmt;
-        switch ((prefs.gamepadInputType.get()+"").toLowerCase()) {
-            case "xinput": fmt = GamepadIpc.HandshakeFormat.NEW;    break;   // doar XInput
-            case "dinput": fmt = GamepadIpc.HandshakeFormat.LEGACY; break;   // doar DInput (legacy)
-            case "all":    fmt = GamepadIpc.HandshakeFormat.BOTH;   break;   // auto: răspunde în formatul cerut
-            case "none":   fmt = GamepadIpc.HandshakeFormat.NONE;   break;   // nu răspunde deloc
-            default:       fmt = GamepadIpc.HandshakeFormat.BOTH;   break;
-        }
-
-        // oprește instanța veche
-        try { if (ipc != null) ipc.sendRelease(); } catch (Throwable ignored) {}
-        try { if (ipc != null) ipc.stop(); } catch (Throwable ignored) {}
-
-        ipc = new GamepadIpc(
-                host,
-                /* clientPort = */ base,         // Android ascultă aici
-                /* serverPort = */ base + 1,     // opțional/fallback
-                gpId,
-                new GamepadIpc.Listener() {
-                    @Override public int onGetGamepadRequested() {
-                        switch (mode) {
-                            case "xinput":
-                                return GamepadIpc.FLAG_INPUT_TYPE_XINPUT;
-                            case "dinput":
-                                // DInput, cu mapare XInput ca să ai butoanele la locul lor
-                                return GamepadIpc.FLAG_INPUT_TYPE_DINPUT
-                                        | GamepadIpc.FLAG_DINPUT_MAPPER_XINPUT;
-                            case "all":
-                            default:
-                                // Trimite ambele: XInput + DInput (mapper XInput)
-                                return GamepadIpc.FLAG_INPUT_TYPE_XINPUT
-                                        | GamepadIpc.FLAG_INPUT_TYPE_DINPUT
-                                        | GamepadIpc.FLAG_DINPUT_MAPPER_XINPUT;
-                        }
-                    }
-                    @Override public void onRumble(int l, int r, int durMs) {
-                        if (gamepadHandler != null) gamepadHandler.rumble(l, r, durMs);
-                    }
-                    @Override public void onRelease() {
-                        if (gamepadHandler != null) gamepadHandler.cancelRumble();
-                    }
-                    @Override public void onLog(String msg) { android.util.Log.d("GamepadIPC", msg); }
-                },
-                fmt
-        );
-        ipc.setPumpHz(stateHz);
-        ipc.setName(currGpName);
-        ipc.start();
-
-        // inițializează handler-ul de gamepad
-        gamepadHandler = new GamepadInputHandler(this, lorieView, ipc, gpState, prefs.gamepadForwardX11.get());
-        gamepadHandler.reloadPrefs(prefs);
-        gamepadHandler.setupGamepadInput();
-    }
-
-    private void stopIpc() {
-        try { if (gamepadHandler != null) gamepadHandler.cancelRumble(); } catch (Throwable ignored) {}
-        try { if (ipc != null) ipc.sendRelease(); } catch (Throwable ignored) {}
-        try { if (ipc != null) ipc.stop(); } catch (Throwable ignored) {}
-        ipc = null; gamepadHandler = null;
-    }
-
-    private static int safeParseInt(String s, int def) {
-        try { return Integer.parseInt(s); } catch (Exception ignored) { return def; }
-    }
-
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        final int src = event.getSource();
-        final boolean fromGamepad =
-                (src & (InputDevice.SOURCE_GAMEPAD | InputDevice.SOURCE_JOYSTICK | InputDevice.SOURCE_DPAD)) != 0;
-
-        if (fromGamepad) {
-            return false;
-        }
-        return super.onKeyDown(keyCode, event);
-    }
-
-
-    @Override
-    public boolean onKeyUp(int keyCode, KeyEvent event) {
-        final int src = event.getSource();
-        final boolean fromGamepad =
-                (src & (InputDevice.SOURCE_GAMEPAD | InputDevice.SOURCE_JOYSTICK | InputDevice.SOURCE_DPAD)) != 0;
-
-        if (fromGamepad) {
-            return false;
-        }
-        return super.onKeyUp(keyCode, event);
-    }
-
-    @Override
-    public boolean dispatchKeyEvent(KeyEvent e) {
-        // Lasă sistemul să livreze evenimentul normal (IME, views etc).
-        // Noi prindem în onKeyDown/onKeyUp mai jos.
-        return super.dispatchKeyEvent(e);
-    }
-
-    @Override
-    public boolean onGenericMotionEvent(MotionEvent event) {
-        if (gamepadHandler != null) {
-            return gamepadHandler.handleGenericMotionEvent(event) || super.onGenericMotionEvent(event);
-        }
-        return super.onGenericMotionEvent(event);
-    }
-
-    private boolean isPresetLoaded = false;
-    public void refreshLoadedPreset(boolean forceLoad) {
-        if (!isPresetLoaded || forceLoad){
-            FrameLayout buttonLayer = findViewById(R.id.top);
-
-            List<View> toRemove = new ArrayList<>();
-            for (int i = 0; i < buttonLayer.getChildCount(); i++) {
-                View child = buttonLayer.getChildAt(i);
-                if (child instanceof Button) {
-                    toRemove.add(child);
-                }
-            }
-            for (View view : toRemove) {
-                buttonLayer.removeView(view);
-            }
-            if (LorieView.connected()){
-                SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
-                String screenID = getDisplayId(this);
-                String lastPreset = prefs.getString("last_used_preset_" + screenID, "preset_empty");
-
-                virtualKeyHandler = new VirtualKeyHandler(this, getLorieView(), ipc, gpState, gamepadHandler);
-                VirtualKeyMapperActivity virtualKeyMapperActivity = new VirtualKeyMapperActivity();
-                List<Button> buttons = virtualKeyMapperActivity.loadPreset(this, lastPreset, buttonLayer);
-
-                for (Button btn : buttons) {
-                    virtualKeyHandler.setupInputForButton(btn, buttonLayer);
-
-                    if (btn.getParent() == null) {
-                        buttonLayer.addView(btn);
-                    }
-                }
-
-            }
-        }
-    }
 
     @Override
     protected void onDestroy() {
-        try { unregisterReceiver(receiver); } catch (Throwable ignored) {}
+        unregisterReceiver(receiver);
         super.onDestroy();
-        try { if (ipc != null) { ipc.sendRelease(); ipc.stop(); } } catch (Throwable ignored) {}
     }
-
 
     //Register the needed events to handle stylus as left, middle and right click
     @SuppressLint("ClickableViewAccessibility")
@@ -905,16 +600,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     void onPreferencesChanged(String key) {
-        if ("additionalKbdVisible".equals(key)) return;
-
-        if (isBooting) return; // <- important
-        LorieView lv = getLorieView();
-        if (lv == null) return; // protecție
+        if ("additionalKbdVisible".equals(key))
+            return;
 
         handler.removeCallbacks(this::onPreferencesChangedCallback);
         handler.postDelayed(this::onPreferencesChangedCallback, 100);
-        // mută reload-ul gamepad aici, după debounce-ul grafic:
-        handler.post(() -> maybeReloadGamepad(lv));
     }
 
     @SuppressLint("UnsafeIntentLaunch")
@@ -1038,7 +728,7 @@ public class MainActivity extends AppCompatActivity {
     @SuppressLint("ObsoleteSdkInt")
     Notification buildNotification() {
         NotificationCompat.Builder builder =  new NotificationCompat.Builder(this, getNotificationChannel(mNotificationManager))
-                .setContentTitle("Termux:X11-Extra")
+                .setContentTitle("Termux:X11")
                 .setSmallIcon(R.drawable.ic_x11_icon)
                 .setContentText(getResources().getText(R.string.notification_content_text))
                 .setOngoing(true)
@@ -1203,19 +893,15 @@ public class MainActivity extends AppCompatActivity {
             boolean connected = LorieView.connected();
             setTerminalToolbarView();
             findViewById(R.id.mouse_buttons).setVisibility(prefs.showMouseHelper.get() && "1".equals(prefs.touchMode.get()) && connected ? View.VISIBLE : View.GONE);
-            findViewById(R.id.stub).setVisibility(connected ? View.INVISIBLE : View.VISIBLE);
-            getLorieView().setVisibility(connected ? View.VISIBLE : View.INVISIBLE);
+            findViewById(R.id.stub).setVisibility(connected?View.INVISIBLE:View.VISIBLE);
+            getLorieView().setVisibility(connected?View.VISIBLE:View.INVISIBLE);
 
             // We should recover connection in the case if file descriptor for some reason was broken...
-            if (!connected) {
+            if (!connected)
                 tryConnect();
-                isPresetLoaded = false;
-                refreshLoadedPreset(false);
-            } else{
+            else
                 getLorieView().setPointerIcon(PointerIcon.getSystemIcon(this, PointerIcon.TYPE_NULL));
-                refreshLoadedPreset(false);
-                isPresetLoaded = true;
-            }
+
             onWindowFocusChanged(hasWindowFocus());
         });
     }
@@ -1225,6 +911,15 @@ public class MainActivity extends AppCompatActivity {
             return false;
 
         return LorieView.connected();
+    }
+
+    private void checkRestartInput() {
+        // an imperfect workaround for Gboard CJK keyboard in DeX soft keyboard mode
+        // in that particular mode during language switching, InputConnection#requestCursorUpdates() is not called and no signal can be picked up.
+        // therefore, check to activate CJK keyboard is done upon a keypress.
+        if (getLorieView().enableGboardCJK && SamsungDexUtils.checkDeXEnabled(this))
+            getLorieView().checkRestartInput(false);
+        handler.postDelayed(this::checkRestartInput, 300);
     }
 
     public static void getRealMetrics(DisplayMetrics m) {

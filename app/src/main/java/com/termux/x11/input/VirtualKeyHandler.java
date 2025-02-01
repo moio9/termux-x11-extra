@@ -2,577 +2,157 @@ package com.termux.x11.input;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.graphics.Color;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
 import android.util.Log;
-import android.util.SparseArray;
-import android.view.KeyEvent;
 import android.view.MotionEvent;
-import android.view.View;
-import android.view.ViewGroup;
 import android.widget.Button;
-
 import com.termux.x11.LorieView;
 import com.termux.x11.MainActivity;
 import com.termux.x11.R;
-import com.termux.x11.ipc.GamepadIpc;
-import com.termux.x11.input.GamepadInputHandler;
-
-import java.util.Arrays;
-import java.util.List;
 
 public class VirtualKeyHandler {
-    private final Context context;
-    private final LorieView lorieView;
-    private GamepadIpc ipc;
-    private GamepadIpc.GamepadState gpState;
+    private Context context;
 
-    private final SparseArray<View> activeButtons = new SparseArray<>();
-    private GamepadInputHandler gamepadHandler;
-
-    private float lastTouchX;
-    private float lastTouchY;
-    private boolean isMouseTrackingActive = false;
-
-    // Constructor
-    public VirtualKeyHandler(Context context,
-                             LorieView lorieView,
-                             GamepadIpc ipc,
-                             GamepadIpc.GamepadState gpState,
-                             GamepadInputHandler gamepadHandler) {
+    public VirtualKeyHandler(Context context) {
         this.context = context;
-        this.lorieView = lorieView;
-        this.ipc = ipc;
-        this.gpState = gpState;
-        this.gamepadHandler = gamepadHandler;
-
-
-        if (this.context == null) {
-            throw new IllegalArgumentException("Context cannot be null in VirtualKeyHandler");
-        }
-        if (this.lorieView == null) {
-            Log.w("VirtualKeyHandler", "LorieView is null. Some functionalities might be affected.");
-            // throw new IllegalArgumentException("LorieView cannot be null");
-        }
-        if (this.ipc == null) {
-            Log.w("VirtualKeyHandler", "IPC interface is null.");
-        }
-        if (this.gpState == null) {
-            Log.w("VirtualKeyHandler", "GamepadState is null.");
-        }
     }
 
-
     @SuppressLint("ClickableViewAccessibility")
-    public void setupInputForButton(Button button, ViewGroup parent) {
+    public void setupInputForButton(Button button) {
         button.setOnTouchListener((v, event) -> {
-            String tag = (String) button.getTag();
-            if (tag == null) return false;
+            String selectedKey = (String) button.getTag();
+            if (selectedKey == null) {
+                Log.e("DEBUG", "⚠️ Butonul nu are un input key asignat!");
+                return false;
+            }
 
-            LorieView lv = this.lorieView;
-            if (lv == null) return false;
+            int keyCode = getKeyEventCode(selectedKey);
+            Log.d("DEBUG", "🔎 Tasta apăsată: " + selectedKey + " -> KeyCode: " + keyCode);
 
-            int pointerId = event.getPointerId(event.getActionIndex());
-            boolean isToggleable = Boolean.TRUE.equals(button.getTag(R.id.toggleable_flag));
-            boolean isSlideable = Boolean.TRUE.equals(button.getTag(R.id.slideable_flag));
+            if (keyCode == -1) {
+                Log.e("DEBUG", "⚠️ Cod necunoscut pentru tasta: " + selectedKey);
+                return false;
+            }
 
-            switch (event.getActionMasked()) {
+            LorieView lorieView = ((MainActivity) context).findViewById(R.id.lorieView);
+            if (lorieView == null) {
+                Log.e("DEBUG", "❌ Eroare: LorieView nu a fost găsit!");
+                return false;
+            }
+
+            switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
-                case MotionEvent.ACTION_POINTER_DOWN:
-                    if (Arrays.asList(tag.split("\\+")).contains("Mouse_Track")) {
-                        lastTouchX = event.getRawX();
-                        lastTouchY = event.getRawY();
-                        isMouseTrackingActive = true;
-                        return true;
-                    }
-
-                    if (isSlideable) {
-                        handleButtonPress(lorieView, pointerId, button);
-                        activeButtons.put(pointerId, button);
-                    } else if (isToggleable) {
-                        if (button.isSelected()) {
-                            handleButtonRelease(lorieView, pointerId, button);
-                            updateToggleVisual(button, true);
-                            button.setSelected(false);
-                        } else {
-                            handleButtonPress(lorieView, pointerId, button);
-                            updateToggleVisual(button, false);
-                            button.setSelected(true);
-                        }
-                    } else {
-                        handleButtonPress(lorieView, pointerId, button);
-                        activeButtons.put(pointerId, button);
-                    }
-                    break;
-
-                case MotionEvent.ACTION_MOVE:
-                    if (tag.contains("Mouse_Track") && isMouseTrackingActive) {
-                        float currentX = event.getRawX();
-                        float currentY = event.getRawY();
-
-                        float deltaX = currentX - lastTouchX;
-                        float deltaY = currentY - lastTouchY;
-
-                        if (Math.abs(deltaX) < 0.5f && Math.abs(deltaY) < 0.5f) return true;
-
-                        lorieView.sendMouseEvent(deltaX, deltaY, 0, false, true);
-
-                        lastTouchX = currentX;
-                        lastTouchY = currentY;
-                    }
-
-                    if (tag.equals("Gamepad_LS") || tag.equals("Gamepad_RS")) {
-                        float dx = (event.getX() - v.getWidth()/2f)  / (v.getWidth()/2f);
-                        float dy = (event.getY() - v.getHeight()/2f) / (v.getHeight()/2f);
-                        dx = Math.max(-1f, Math.min(1f, dx));
-                        dy = Math.max(-1f, Math.min(1f, dy));
-
-                        GamepadInputHandler.GamepadAxis axis =
-                                tag.contains("RS")
-                                        ? GamepadInputHandler.GamepadAxis.RIGHT_STICK
-                                        : GamepadInputHandler.GamepadAxis.LEFT_STICK;
-
-                        gamepadHandler.setAxis(axis, dx, dy);
-                        return true;
-                    }
-                    if (tag.equals("Gamepad_LT") || tag.equals("Gamepad_RT")) {
-                        float value = 1f - Math.max(0f, Math.min(1f, event.getY() / v.getHeight()));
-
-                        float lt = tag.equals("Gamepad_LT") ? value : 0f;
-                        float rt = tag.equals("Gamepad_RT") ? value : 0f;
-                        gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, lt, rt);
-                        return true;
-                    }
-                    if (isSlideable) {
-                        float x = event.getX();
-                        float y = event.getY();
-
-                        View hovered = findButtonAtPosition(parent, x + v.getX(), y + v.getY());
-                        View previous = activeButtons.get(pointerId);
-
-                        if (hovered != null && hovered != previous) {
-                            if (previous != null) handleButtonRelease(lorieView, pointerId, previous);
-                            handleButtonPress(lorieView, pointerId, hovered);
-                            activeButtons.put(pointerId, hovered);
-                        }
-                    }
+                    // Trimite evenimentul de tastă "apăsat"
+                    lorieView.sendKeyEvent(keyCode, keyCode, true);
+                    Log.d("DEBUG", "✅ Tasta " + selectedKey + " apăsată.");
                     break;
 
                 case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_POINTER_UP:
                 case MotionEvent.ACTION_CANCEL:
-                    if (tag.contains("Mouse_Track")) {
-                        isMouseTrackingActive = false;
-                        lastTouchX = -1;
-                        lastTouchY = -1;
-                    }
-
-                    if (tag.equals("Gamepad_LS") || tag.equals("Gamepad_RS")) {
-                        GamepadInputHandler.GamepadAxis axis =
-                                tag.contains("RS")
-                                        ? GamepadInputHandler.GamepadAxis.RIGHT_STICK
-                                        : GamepadInputHandler.GamepadAxis.LEFT_STICK;
-
-                        gamepadHandler.setAxis(axis, 0f, 0f);
-                        return true;
-                    }
-                    if (!isToggleable || isSlideable) {
-                        View pressed = activeButtons.get(pointerId);
-                        if (pressed != null) {
-                            handleButtonRelease(lorieView, pointerId, pressed);
-                            activeButtons.remove(pointerId);
-                        }
-                    }
+                    // Trimite evenimentul de tastă "eliberat"
+                    lorieView.sendKeyEvent(keyCode, keyCode, false);
+                    Log.d("DEBUG", "✅ Tasta " + selectedKey + " eliberată.");
                     break;
             }
-            return true;
+
+            return true; // Returnăm true pentru a consuma evenimentul
         });
     }
 
-    private void handleButtonPress(LorieView lorieView, int pointerId, View button) {
-        String tag = (String) button.getTag();
-        if (tag == null) return;
-
-        String[] keys = tag.split("\\+");
-        List<String> keyList = Arrays.asList(keys);
-        if (keyList.size() == 1 && keyList.contains("Mouse_Track")) return;
-        for (String key : keys) {
-            key = key.trim();
-            if (key.contains(":")) key = key.split(":")[0];
-
-            if (key.startsWith("Gamepad_")) {
-                int code = getGamepadKeyCode(key);
-                int id = getGamepadButtonCode(key);
-                if (code != -1) {
-                    gamepadHandler.handleKeyDown(code, null);
-                } else {
-                    sendAnalogShortcut(key);
-                }
-            } else if (key.startsWith("Mouse")) {
-                if (!key.equals("Mouse_Track")) {
-                    int code = getMouseButtonCode(key);
-                    if (code != -1) {
-                        lorieView.sendMouseEvent(0.0F, 0.0F, code, true, false);
-                    }
-                }
-            }
-            else {
-                int code = getKeyEventCode(key);
-                if (code != -1) {
-                    lorieView.sendKeyEvent(code, code, true);
-                }
-            }
-        }
-
-        button.setPressed(true);
-    }
-
-
-    private void handleButtonRelease(LorieView lorieView, int pointerId, View button) {
-        String tag = (String) button.getTag();
-        if (tag == null) return;
-
-        String[] keys = tag.split("\\+");
-        List<String> keyList = Arrays.asList(keys);
-        if (keyList.size() == 1 && keyList.contains("Mouse_Track")) return;
-        for (String key : keys) {
-            key = key.trim();
-            if (key.contains(":")) key = key.split(":")[0];
-
-            if (key.startsWith("Gamepad_")) {
-                int code = getGamepadKeyCode(key);
-                int id = getGamepadButtonCode(key);
-                if (code != -1) {
-                    gamepadHandler.handleKeyUp(code, null);
-                } else {
-                    releaseAnalogShortcut(key);
-                }
-            } else if (key.startsWith("Mouse")) {
-                if (!key.equals("Mouse_Track")) {
-                    int code = getMouseButtonCode(key);
-                    if (code != -1) {
-                        lorieView.sendMouseEvent(0.0F, 0.0F, code, false, false);
-                    }
-                }
-
-            }
-            if (key.equals("Gamepad_LT")) {
-                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, 0f, 0f);
-            } else if (key.equals("Gamepad_RT")) {
-                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, 0f, 0f);
-            }
-            else {
-                int code = getKeyEventCode(key);
-                if (code != -1) {
-                    lorieView.sendKeyEvent(code, code, false);
-                }
-            }
-        }
-
-        button.setPressed(false);
-        activeButtons.remove(pointerId);
-    }
-
-
-
-    private View findButtonAtPosition(ViewGroup parent, float x, float y) {
-        int[] parentLocation = new int[2];
-        parent.getLocationOnScreen(parentLocation);
-        int touchX = (int) (x + parentLocation[0]);
-        int touchY = (int) (y + parentLocation[1]);
-
-        for (int i = 0; i < parent.getChildCount(); i++) {
-            View child = parent.getChildAt(i);
-            if (child instanceof Button) {
-                int[] childLocation = new int[2];
-                child.getLocationOnScreen(childLocation);
-                int left = childLocation[0];
-                int top = childLocation[1];
-                int right = left + child.getWidth();
-                int bottom = top + child.getHeight();
-
-                if (touchX >= left && touchX <= right && touchY >= top && touchY <= bottom) {
-                    Log.d("TOUCH", "Found button: " + ((Button) child).getText());
-                    Object slideTag = child.getTag(R.id.slideable_flag);
-                    if (slideTag == null || !(Boolean.TRUE.equals(slideTag))) return null;
-                    return child;
-                }
-            }
-        }
-        return null;
-    }
-
-    private void updateToggleVisual(Button button, boolean selected) {
-        button.animate()
-            .scaleX(selected ? 1.1f : 1f)
-            .scaleY(selected ? 1.1f : 1f)
-            .setDuration(120)
-            .start();
-
-        Drawable bg = button.getBackground();
-        if (bg instanceof GradientDrawable) {
-            ((GradientDrawable) bg).mutate(); // evită efectul global
-            ((GradientDrawable) bg).setColor(selected ? Color.parseColor("#33AA33") : Color.GRAY);
-        }
-    }
-
-
-    private void sendAnalogShortcut(String key) {
-        switch (key) {
-            case "Gamepad_LS_Left":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.LEFT_STICK,  -1f, 0f); break;
-            case "Gamepad_LS_Right": gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.LEFT_STICK,   1f, 0f); break;
-            case "Gamepad_LS_UP":    gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.LEFT_STICK,   0f, 1f); break;
-            case "Gamepad_LS_Down":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.LEFT_STICK,   0f,-1f); break;
-
-            case "Gamepad_RS_Left":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.RIGHT_STICK, -1f, 0f); break;
-            case "Gamepad_RS_Right": gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.RIGHT_STICK,  1f, 0f); break;
-            case "Gamepad_RS_Up":    gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.RIGHT_STICK,  0f, 1f); break;
-            case "Gamepad_RS_Down":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.RIGHT_STICK,  0f,-1f); break;
-
-            case "Gamepad_LT_Max":   gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, 1f, 0f); break;
-            case "Gamepad_RT_Max":   gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, 0f, 1f); break;
-
-            case "Gamepad_DPad_Left":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.DPAD, -1f, 0f); break;
-            case "Gamepad_DPad_Right": gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.DPAD,  1f, 0f); break;
-            case "Gamepad_DPad_Up":    gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.DPAD,  0f, 1f); break;
-            case "Gamepad_DPad_Down":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.DPAD,  0f,-1f); break;
-        }
-    }
-
-    private void releaseAnalogShortcut(String key) {
-        if (gamepadHandler == null) return;
-        switch (key) {
-            case "Gamepad_LS_Left":
-            case "Gamepad_LS_Right":
-            case "Gamepad_LS_UP":
-            case "Gamepad_LS_Down":
-                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.LEFT_STICK, 0f, 0f);
-                break;
-
-            case "Gamepad_RS_Left":
-            case "Gamepad_RS_Right":
-            case "Gamepad_RS_Up":
-            case "Gamepad_RS_Down":
-                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.RIGHT_STICK, 0f, 0f);
-                break;
-
-            case "Gamepad_LT_Max":
-            case "Gamepad_RT_Max":
-                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, 0f, 0f);
-                break;
-
-            case "Gamepad_DPad_Left":
-            case "Gamepad_DPad_Right":
-            case "Gamepad_DPad_Up":
-            case "Gamepad_DPad_Down":
-                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.DPAD, 0f, 0f);
-                break;
-        }
-    }
-
-    private int getGamepadKeyCode(String key) {
-        switch (key) {
-            case "Gamepad_A":      return KeyEvent.KEYCODE_BUTTON_A;
-            case "Gamepad_B":      return KeyEvent.KEYCODE_BUTTON_B;
-            case "Gamepad_X":      return KeyEvent.KEYCODE_BUTTON_X;
-            case "Gamepad_Y":      return KeyEvent.KEYCODE_BUTTON_Y;
-            case "Gamepad_LB":     return KeyEvent.KEYCODE_BUTTON_L1;
-            case "Gamepad_RB":     return KeyEvent.KEYCODE_BUTTON_R1;
-            case "Gamepad_Select": return KeyEvent.KEYCODE_BUTTON_SELECT; // fallback: KEYCODE_BACK
-            case "Gamepad_Start":  return KeyEvent.KEYCODE_BUTTON_START;  // fallback: KEYCODE_BUTTON_MODE
-            case "Gamepad_Home":   return KeyEvent.KEYCODE_BUTTON_MODE;
-            default: return -1;
-        }
-    }
-
-    private int getGamepadButtonCode(String key) {
-        switch (key) {
-            case "Gamepad_A": return 1;
-            case "Gamepad_B": return 2;
-            case "Gamepad_Y": return 3;
-            case "Gamepad_X": return 4;
-            case "Gamepad_LB": return 5;
-            case "Gamepad_RB": return 6;
-            case "Gamepad_Select": return 7;
-            case "Gamepad_Start": return 8;
-            case "Gamepad_Home": return 9;
-
-            default: return -1;
-        }
-    }
-
-
-    private int getMouseButtonCode(String tag) {
-        switch (tag) {
-            case "Mouse_Left": return 1;
-            case "Mouse_Middle": return 2;
-            case "Mouse_Right": return 3;
-            default: return 0;
-        }
-    }
-
     private int getKeyEventCode(String key) {
-        if (key == null) return -1;
         switch (key) {
-            case "A":
-                return 30;
-            case "B":
-                return 48;
-            case "C":
-                return 46;
-            case "D":
-                return 32;
-            case "E":
-                return 18;
-            case "F":
-                return 33;
-            case "G":
-                return 34;
-            case "H":
-                return 35;
-            case "I":
-                return 23;
-            case "J":
-                return 36;
-            case "K":
-                return 37;
-            case "L":
-                return 38;
-            case "M":
-                return 50;
-            case "N":
-                return 49;
-            case "O":
-                return 24;
-            case "P":
-                return 25;
-            case "Q":
-                return 16;
-            case "R":
-                return 19;
-            case "S":
-                return 31;
-            case "T":
-                return 20;
-            case "U":
-                return 22;
-            case "V":
-                return 47;
-            case "W":
-                return 17;
-            case "X":
-                return 45;
-            case "Y":
-                return 21;
-            case "Z":
-                return 44;
-            case "0":
-                return 11;
-            case "1":
-                return 2;
-            case "2":
-                return 3;
-            case "3":
-                return 4;
-            case "4":
-                return 5;
-            case "5":
-                return 6;
-            case "6":
-                return 7;
-            case "7":
-                return 8;
-            case "8":
-                return 9;
-            case "9":
-                return 10;
-            case "Space":
-                return 57;
-            case "Enter":
-                return 28;
-            case "Backspace":
-                return 14;
-            case "Tab":
-                return 15;
-            case "Escape":
-                return 1;
-            case "Delete":
-                return 111;
-            case "Insert":
-                return 110;
-            case "Home":
-                return 102;
-            case "End":
-                return 107;
-            case "Page Up":
-                return 104;
-            case "Page Down":
-                return 109;
-            case "↑":
-                return 103;
-            case "↓":
-                return 108;
-            case "←":
-                return 105;
-            case "→":
-                return 106;
-            case "Ctrl":
-                return 29;
-            case "Shift":
-                return 42;
-            case "Alt":
-                return 56;
-            case "F1":
-                return 59;
-            case "F2":
-                return 60;
-            case "F3":
-                return 61;
-            case "F4":
-                return 62;
-            case "F5":
-                return 63;
-            case "F6":
-                return 64;
-            case "F7":
-                return 65;
-            case "F8":
-                return 66;
-            case "F9":
-                return 67;
-            case "F10":
-                return 68;
-            case "F11":
-                return 87;
-            case "F12":
-                return 88;
-            case "`":
-                return 41;
-            case "-":
-                return 12;
-            case "=":
-                return 13;
-            case "[":
-                return 26;
-            case "]":
-                return 27;
-            case "\\":
-                return 43;
-            case ";":
-                return 39;
-            case "'":
-                return 40;
-            case "，":
-                return 51;
-            case ".":
-                return 52;
-            case "/":
-                return 53;
-            case "◆":
-                return 125;
-            default:
-                return -1;
+            // Litere
+            case "A": return 30;
+            case "B": return 48;
+            case "C": return 46;
+            case "D": return 32;
+            case "E": return 18;
+            case "F": return 33;
+            case "G": return 34;
+            case "H": return 35;
+            case "I": return 23;
+            case "J": return 36;
+            case "K": return 37;
+            case "L": return 38;
+            case "M": return 50;
+            case "N": return 49;
+            case "O": return 24;
+            case "P": return 25;
+            case "Q": return 16;
+            case "R": return 19;
+            case "S": return 31;
+            case "T": return 20;
+            case "U": return 22;
+            case "V": return 47;
+            case "W": return 17;
+            case "X": return 45;
+            case "Y": return 21;
+            case "Z": return 44;
+
+            // Cifre
+            case "0": return 11;
+            case "1": return 2;
+            case "2": return 3;
+            case "3": return 4;
+            case "4": return 5;
+            case "5": return 6;
+            case "6": return 7;
+            case "7": return 8;
+            case "8": return 9;
+            case "9": return 10;
+
+            // Taste speciale
+            case "Space": return 57;
+            case "Enter": return 28;
+            case "Backspace": return 14;
+            case "Tab": return 15;
+            case "Escape": return 1;
+            case "Delete": return 111;
+            case "Insert": return 110;
+            case "Home": return 102;
+            case "End": return 107;
+            case "Page Up": return 104;
+            case "Page Down": return 109;
+
+            // Taste de navigare (săgeți)
+            case "↑": return 103;
+            case "↓": return 108;
+            case "←": return 105;
+            case "→": return 106;
+
+            // Combinații de taste (modificatori)
+            case "Ctrl": return 29;
+            case "Shift": return 42;
+            case "Alt": return 56;
+
+            // Taste funcție
+            case "F1": return 59;
+            case "F2": return 60;
+            case "F3": return 61;
+            case "F4": return 62;
+            case "F5": return 63;
+            case "F6": return 64;
+            case "F7": return 65;
+            case "F8": return 66;
+            case "F9": return 67;
+            case "F10": return 68;
+            case "F11": return 87;
+            case "F12": return 88;
+
+            // Altele
+            case "`": return 41;
+            case "-": return 12;
+            case "=": return 13;
+            case "[": return 26;
+            case "]": return 27;
+            case "\\": return 43;
+            case ";": return 39;
+            case "'": return 40;
+            case ",": return 51;
+            case ".": return 52;
+            case "/": return 53;
+
+            // Scan code necunoscut
+            default: return 0;
         }
     }
 }
