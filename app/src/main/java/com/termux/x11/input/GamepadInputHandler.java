@@ -18,7 +18,7 @@ public class GamepadInputHandler {
     }
 
     public void setupGamepadInput() {
-        Log.d("GamepadInput", "GamepadInputHandler inițializat.");
+        Log.d("GamepadInput", "🎮 GamepadInputHandler inițializat.");
     }
 
     public boolean handleKeyDown(int keyCode, KeyEvent event) {
@@ -66,7 +66,7 @@ public class GamepadInputHandler {
         }
 
         lorieView.sendGamepadEvent(button, pressed, 0.0F, 0.0F ,0);
-        Log.d("GamepadInput", "Buton gamepad: " + button + " Apăsat: " + pressed);
+        Log.d("GamepadInput", "🎮 Buton gamepad: " + button + " Apăsat: " + pressed);
     }
 
     private void sendGamepadAxisEvent(float axisX, float axisY, int axisID) {
@@ -77,6 +77,6 @@ public class GamepadInputHandler {
         }
 
         lorieView.sendGamepadEvent(0, false, axisX, axisY, axisID);
-        Log.d("GamepadInput", "Stickuri & Triggere trimise.");
+        Log.d("GamepadInput", "🎮 Stickuri & Triggere trimise.");
     }
 }
