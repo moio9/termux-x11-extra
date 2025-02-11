@@ -1,15 +1,20 @@
 package com.termux.x11;
 
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.hardware.display.DisplayManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
 import android.view.ContextMenu;
+import android.view.Display;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.SeekBar;
@@ -24,6 +29,7 @@ import com.termux.x11.input.VirtualKeyHandler;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 
@@ -52,7 +58,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
         // Când apasă pe "Load Preset", deschide lista cu preseturi
         VirtualKeyHandler virtualKeyHandler = new VirtualKeyHandler(this);
-        loadPresetButton.setOnClickListener(v -> showLoadPresetDialog());
+        loadPresetButton.setOnClickListener(v -> showLoadPresetDialog(buttonContainer, virtualKeyHandler));
         //loadButtons(this, virtualKeyHandler);
         //loadPreset("default");
 
@@ -96,7 +102,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
         buttonContainer.addView(button);
     }
-
 
 
     /**
@@ -165,27 +170,29 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     }
 
 
-
     /**
      * Salvează poziția butonului în SharedPreferences
+     *
+     * @return
      */
-    private void saveButtonSettings(Button button) {
+    private String saveButtonSettings(Button button) {
         SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
 
         Set<String> buttonData = new HashSet<>(prefs.getStringSet("button_data", new HashSet<>()));
 
         int id = button.getId();
+        String tag = (String) button.getTag();
+        String text = button.getText().toString();
         float x = button.getX();
         float y = button.getY();
         int width = button.getWidth();
         int height = button.getHeight();
-        float alpha = button.getAlpha();
-        String name = button.getText().toString(); // Salvăm numele!
-        String tag = (String) button.getTag(); // Salvăm tag-ul (inputul asociat)
+        int alpha = button.getBackground().getAlpha();
+        ; // Salvăm tag-ul (inputul asociat)
 
         // Construim un string care conține toate datele
-        String line = id + "," + x + "," + y + "," + width + "," + height + "," + alpha + "," + tag + "," + name;
+        String line = id + "," + x + "," + y + "," + width + "," + height + "," + alpha + "," + tag + "," + text;
 
         // Ștergem orice linie care începe cu același ID, ca să nu avem duplicat
         buttonData.removeIf(data -> data.startsWith(id + ","));
@@ -196,9 +203,9 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         editor.putStringSet("button_data", buttonData);
         editor.apply();
 
-        Log.d("DEBUG", "Salvăm butonul: id=" + id + ", tag=" + tag + ", text=" + name);
+        Log.d("DEBUG", "Salvăm butonul: id=" + id + ", tag=" + tag + ", text=" + text);
+        return line;
     }
-
 
 
     /**
@@ -212,26 +219,26 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
         for (String data : buttonData) {
             String[] parts = data.split(",");
-            if (parts.length < 8) continue; // Verificăm dacă avem toate datele (inclusiv tag-ul și textul)
+            if (parts.length < 8)
+                continue; // Verificăm dacă avem toate datele (inclusiv tag-ul și textul)
 
             int id = Integer.parseInt(parts[0]);
             float x = Float.parseFloat(parts[1]);
             float y = Float.parseFloat(parts[2]);
             int width = Integer.parseInt(parts[3]);
             int height = Integer.parseInt(parts[4]);
-            float alpha = Float.parseFloat(parts[5]);
-            String tag = parts[6]; // Tag-ul (inputul asociat)
-            String text = parts[7]; // Textul butonului
+            int alpha = Integer.parseInt(parts[5]);  // ✅ Convertim alpha corect (0-255)
+            String tag = parts[6];
+            String text = parts[7];
 
-            // Creăm butonul virtual
             Button button = new Button(context);
-            button.setText(text); // Setăm textul butonului
-            button.setTag(tag); // Setăm tag-ul (inputul asociat)
+            button.setText(text);
+            button.setTag(tag);
             button.setId(id);
             button.setLayoutParams(new FrameLayout.LayoutParams(width, height));
             button.setX(x);
             button.setY(y);
-            button.setAlpha(alpha);
+            button.getBackground().setAlpha(alpha);
 
             // Adăugăm butonul în listă
             buttons.add(button);
@@ -254,8 +261,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         // Setăm referința butonului apăsat
         selectedButton = v;
     }
-
-
 
 
     @Override
@@ -291,7 +296,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     }
 
 
-
     private void removeButtonFromStorage(int buttonId) {
         SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
@@ -302,7 +306,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         editor.putStringSet("button_data", buttonData);
         editor.apply();
     }
-
 
 
     private void showResizeDialog(Button button) {
@@ -388,42 +391,42 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
             View view = buttonContainer.getChildAt(i);
             if (view instanceof Button) {
                 Button button = (Button) view;
-                String tag = (String) button.getTag(); // Obținem tag-ul (inputul asociat)
-                String text = button.getText().toString(); // Obținem textul butonului
-                float x = button.getX();
-                float y = button.getY();
-                int width = button.getWidth();
-                int height = button.getHeight(); // ✅ Salvăm înălțimea
-                float alpha = button.getAlpha();
-
-                // Adăugăm toate datele inclusiv `height`
-                String data = button.getId() + "," + x + "," + y + "," + width + "," + height + "," + alpha + "," + tag + "," + text;
+                String data = saveButtonSettings(button);
                 buttonData.add(data);
-
-                Log.d("DEBUG", "💾 Salvăm butonul: " + data);
             }
         }
 
-        editor.putStringSet("preset_default", buttonData);
+        String presetName = "preset_custom"; // Poți schimba acest nume dacă vrei să fie editabil
+
+        editor.putStringSet(presetName, buttonData);
         editor.apply();
 
-        Toast.makeText(this, "✅ Preset saved!", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "✅ Preset salvat: " + presetName, Toast.LENGTH_SHORT).show();
     }
 
 
-
-    private void showLoadPresetDialog() {
+    private void showLoadPresetDialog(FrameLayout mainContainer, VirtualKeyHandler virtualKeyHandler) {
         SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
+
+        // ✅ Asigurăm că există presetul gol
+        ensureEmptyPresetExists(prefs);
+
+        // ✅ Obținem ID-ul display-ului curent
+        String displayId = getDisplayId(buttonContainer.getContext());
+
+        // ✅ Obținem toate cheile preseturilor
         Set<String> presetKeys = prefs.getAll().keySet();
 
-        // Filtrăm doar preset-urile
+        // ✅ Filtrăm doar preset-urile și adăugăm „empty” dacă nu există deja
         Set<String> presetNames = new HashSet<>();
+        presetNames.add("empty"); // ✅ Adăugăm „empty” mereu
         for (String key : presetKeys) {
             if (key.startsWith("preset_")) {
                 presetNames.add(key.replace("preset_", ""));
             }
         }
 
+        // ✅ Verificăm dacă există preseturi disponibile
         if (presetNames.isEmpty()) {
             Toast.makeText(this, "No presets available", Toast.LENGTH_SHORT).show();
             return;
@@ -433,14 +436,50 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Load Preset")
-                .setItems(presetArray, (dialog, which) -> loadPreset(presetArray[which]))
+                .setItems(presetArray, (dialog, which) -> {
+                    String selectedPreset = "preset_" + presetArray[which]; // ✅ Adăugăm prefixul corect
+
+                    // ✅ Încărcăm presetul în containerul de butoane
+                    List<Button> buttons = loadPreset(this, selectedPreset, mainContainer);
+
+                    // ✅ Activăm drag pentru fiecare buton
+                    for (Button btn : buttons) {
+                        enableDrag(btn);
+                    }
+
+                    // ✅ Salvăm acest preset ca "ultimul folosit" pentru acest display
+                    prefs.edit().putString("last_used_preset_" + displayId, selectedPreset).apply();
+                })
                 .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss())
                 .show();
     }
 
 
     private void showSetInputDialog(Button button) {
-        String[] keys = {"W", "A", "S", "D", "Space", "Enter", "Backspace", "↑", "↓", "←", "→"};
+        String[] keys = {
+                // Litere
+                "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+                "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+
+                // Cifre
+                "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+
+                // Taste speciale
+                "Space", "Enter", "Backspace", "Tab", "Escape", "Delete", "Insert",
+                "Home", "End", "Page Up", "Page Down",
+
+                // Taste de navigare (săgeți)
+                "↑", "↓", "←", "→",
+
+                // Combinații de taste (modificatori)
+                "Alt + F4",
+
+                // Altele
+                "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+
+                // Input personalizat
+                //"Custom..."
+        };
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Select Input Key")
@@ -454,56 +493,117 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                 .show();
     }
 
+    public static List<Button> loadPreset(Context context, FrameLayout buttonContainer) {
+        return loadPreset(context, "/", buttonContainer);
+    }
 
-
-    private void loadPreset(String presetName) {
-        SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
-        Set<String> buttonData = prefs.getStringSet("preset_" + presetName, new HashSet<>());
-
-        if (buttonData.isEmpty()) {
-            Toast.makeText(this, "Preset is empty", Toast.LENGTH_SHORT).show();
-            return;
+    public static List<Button> loadPreset(Context context, String presetName, FrameLayout buttonContainer) {
+        if (buttonContainer == null) {
+            Log.e("ERROR", "❌ buttonContainer este NULL!");
+            return new ArrayList<>();
         }
 
-        // Ștergem toate butoanele actuale
-        buttonContainer.removeAllViews();
+        SharedPreferences prefs = context.getSharedPreferences("button_prefs", Context.MODE_PRIVATE);
 
+        String screenID = getDisplayId(context);
+        if (presetName.startsWith("/") || Objects.equals(presetName, "")) {
+            presetName = prefs.getString("last_used_preset_" + screenID, "preset_empty");
+        }
 
-        Log.e("DEBUG", "Datele: " + buttonData);
+        Set<String> buttonData = prefs.getStringSet(presetName, null);
+        if (buttonData == null) {
+            Log.d("DEBUG", "⚠️ Presetul '" + presetName + "' nu există! Se încarcă presetul gol.");
+            presetName = "preset_empty";
+            buttonData = prefs.getStringSet(presetName, new HashSet<>());
+        }
 
-        for (String data : buttonData) {
-            String[] parts = data.split(",");
-            if (parts.length < 8) {
-                Log.e("DEBUG", "Date incomplete pentru buton: " + data);
-                //continue; // Sărim peste datele incomplete
+        List<View> toRemove = new ArrayList<>();
+        for (int i = 0; i < buttonContainer.getChildCount(); i++) {
+            View child = buttonContainer.getChildAt(i);
+            if (child instanceof Button) {
+                toRemove.add(child);
             }
-            int id = Integer.parseInt(parts[0]);
-            float x = Float.parseFloat(parts[1]);
-            float y = Float.parseFloat(parts[2]);
-            int width = Integer.parseInt(parts[3]);
-            int height = Integer.parseInt(parts[4]);
-            float alpha = Float.parseFloat(parts[5]);
-            String tag = parts[6];
-            String text = parts[7];
+        }
+        for (View view : toRemove) {
+            buttonContainer.removeView(view);
+        }
+        Log.d("DEBUG", "✅ Au fost șterse " + toRemove.size() + " butoane.");
 
+        List<Button> buttons = new ArrayList<>();
+        if (!presetName.equals("preset_empty")) {
+            for (String data : buttonData) {
+                String[] parts = data.split(",");
+                if (parts.length < 8) continue;
 
-            // Creăm butonul
-            Button button = new Button(this);
-            button.setText(text);
-            button.setTag(tag);
-            button.setId(id);
-            button.setLayoutParams(new FrameLayout.LayoutParams(width, height));
-            button.setX(x);
-            button.setY(y);
-            button.setAlpha(alpha);
+                int id = Integer.parseInt(parts[0]);
+                float x = Float.parseFloat(parts[1]);
+                float y = Float.parseFloat(parts[2]);
+                int width = Integer.parseInt(parts[3]);
+                int height = Integer.parseInt(parts[4]);
+                int alpha = Integer.parseInt(parts[5]);
+                String tag = parts[6];
+                String text = parts[7];
 
-            Log.e("DEBUG", "A reusit sa ajunga pana aici.");
-            addNewButton(button);
+                Button button = new Button(context);
+                button.setText(text);
+                button.setTag(tag);
+                button.setId(id);
+                button.setLayoutParams(new FrameLayout.LayoutParams(width, height));
+                button.setX(x);
+                button.setY(y);
+                button.getBackground().setAlpha(alpha);
+
+                buttonContainer.addView(button);
+                buttons.add(button);
+            }
         }
 
-        Toast.makeText(this, "Preset loaded: " + presetName, Toast.LENGTH_SHORT).show();
+        return buttons;
     }
 
 
+
+    private void ensureEmptyPresetExists(SharedPreferences prefs) {
+        String emptyPresetName = "preset_empty";
+        Set<String> defaultPreset = prefs.getStringSet(emptyPresetName, null);
+
+        if (defaultPreset == null) {
+            // Dacă presetul „empty” nu există, îl creăm
+            SharedPreferences.Editor editor = prefs.edit();
+
+            // Cream un set gol de butoane
+            Set<String> emptyPreset = new HashSet<>();
+
+            // Salvăm presetul gol
+            editor.putStringSet("Empty", emptyPreset);
+            editor.apply();
+
+            Log.d("DEBUG", "✅ Preset gol creat: " + "Empty");
+            Log.d("DEBUG", "✅ Presetul empty a fost creat automat.");
+        }
+    }
+
+    public static String getDisplayId(Context context) {
+        String displayType = "Builtin Display"; // Implicit
+
+        Intent intent = context.registerReceiver(null, new IntentFilter("android.intent.action.HDMI_PLUGGED"));
+        boolean isHdmiConnected = (intent != null && intent.getBooleanExtra("state", false));
+
+        if (isHdmiConnected) {
+            displayType = "External Display (HDMI)";
+        } else {
+            DisplayManager displayManager = (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);
+            if (displayManager != null) {
+                for (Display display : displayManager.getDisplays()) {
+                    if (display.getDisplayId() != Display.DEFAULT_DISPLAY) {
+                        displayType = "External Display";
+                        break;
+                    }
+                }
+            }
+        }
+
+        return displayType;
+    }
 
 }

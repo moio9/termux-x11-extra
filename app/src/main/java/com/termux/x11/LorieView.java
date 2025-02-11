@@ -849,6 +849,13 @@ public class LorieView extends SurfaceView implements InputStub {
         return sendKeyEvent(scanCode, keyCode, keyDown, 0);
     }
     @FastNative public native boolean sendKeyEvent(int scanCode, int keyCode, boolean keyDown, int a);
+
+    @FastNative
+    public native boolean sendKeyEvent(int scanCode, int keyCode, boolean keyDown);
+
+    @FastNative
+    public native void sendGamepadEvent(int button, boolean pressed, float axisX, float axisY, int axesID);
+
     @FastNative public native void sendTextEvent(byte[] text);
     @CriticalNative public static native boolean requestConnection();
 
