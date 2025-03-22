@@ -92,6 +92,7 @@ public class ExtraKeysConstants {
             put("EXIT", "╳"); // U+2573 BOX DRAWINGS LIGHT DIAGONAL CROSS not well known but easy to understand
             put("MOUSE_HELPER", "\uD83D\uDDB1"); // U+1F5B1 THREE BUTTON MOUSE
             put("STYLUS_HELPER", "\uD83D\uDD8C"); // U+1F58C LOWER LEFT PAINTBRUSH
+            put("LAYOUT", "\uD83E\uDDE9"); // 🧩 PUZZLE PIECE
         }};
 
         public static final ExtraKeyDisplayMap LESS_KNOWN_CHARACTERS_DISPLAY = new ExtraKeyDisplayMap() {{

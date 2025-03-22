@@ -366,7 +366,7 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
 
             boolean requestNotificationPermissionVisible =
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                    && ContextCompat.checkSelfPermission(requireContext(), POST_NOTIFICATIONS) == PERMISSION_DENIED;
+                            && ContextCompat.checkSelfPermission(requireContext(), POST_NOTIFICATIONS) == PERMISSION_DENIED;
             setVisible("requestNotificationPermission", requestNotificationPermissionVisible);
         }
 
@@ -459,7 +459,7 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
                     return false;
                 }
             }
-            
+
             requireContext().sendBroadcast(new Intent(ACTION_PREFERENCES_CHANGED) {{
                 putExtra("key", key);
                 putExtra("fromBroadcast", true);
