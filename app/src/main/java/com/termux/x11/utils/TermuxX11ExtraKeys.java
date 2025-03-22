@@ -1,6 +1,7 @@
 package com.termux.x11.utils;
 
 import static com.termux.shared.termux.extrakeys.ExtraKeysConstants.PRIMARY_KEY_CODES_FOR_STRINGS;
+import static com.termux.x11.MainActivity.ACTION_CUSTOM;
 import static com.termux.x11.MainActivity.toggleKeyboardVisibility;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -22,6 +23,7 @@ import androidx.annotation.NonNull;
 import com.termux.shared.termux.extrakeys.*;
 import com.termux.x11.LoriePreferences;
 import com.termux.x11.MainActivity;
+import com.termux.x11.VirtualKeyMapperActivity;
 
 import org.json.JSONException;
 
@@ -40,7 +42,7 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
     private boolean metaDown;
 
     /** Defines the key for extra keys */
-    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[['ESC','/',{key: '-', popup: '|'},'HOME','UP','END','PGUP','PREFERENCES'], ['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN','KEYBOARD']]"; // Double row
+    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[['ESC','/',{key: '-', popup: '|'},'HOME','UP','END','PGUP','PREFERENCES','LAYOUT'], ['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN','KEYBOARD','EXIT']]"; // Double row
 
     public TermuxX11ExtraKeys(@NonNull View.OnKeyListener eventlistener, MainActivity activity, ExtraKeysView extrakeysview) {
         mEventListener = eventlistener;
@@ -51,6 +53,7 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
 
     private final KeyCharacterMap mVirtualKeyboardKeyCharacterMap = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD);
     static final String ACTION_START_PREFERENCES_ACTIVITY = "com.termux.x11.start_preferences_activity";
+    static final String ACTION_START_MAPPER_ACTIVITY = "com.termux.x11.start_virtualkeymapperactivity";
 
     @Override
     public void onExtraKeyButtonClick(View view, ExtraKeyButton buttonInfo, Button button) {
@@ -113,9 +116,22 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
             Integer keyCode = PRIMARY_KEY_CODES_FOR_STRINGS.get(key);
             if (keyCode == null) return;
 
-            mActivity.getLorieView().sendKeyEvent(0, keyCode, true);
-            mActivity.getLorieView().sendKeyEvent(0, keyCode, false);
-        } else if (key != null) {
+            int scanCode = 0;
+
+            // Workaround pentru DPAD cu scancode specific
+            switch (key) {
+                case "UP":    scanCode = 103; break;
+                case "DOWN":  scanCode = 108; break;
+                case "LEFT":  scanCode = 105; break;
+                case "RIGHT": scanCode = 106; break;
+            }
+
+            // Trimitere efectivă cu scancode
+            mActivity.getLorieView().sendKeyEvent(scanCode, scanCode, true);
+            mActivity.getLorieView().sendKeyEvent(scanCode, scanCode, false);
+
+        }
+        else if (key != null) {
             // not a control char
             mActivity.getLorieView().sendTextEvent(key.getBytes(UTF_8));
         }
@@ -166,6 +182,8 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
     public void onLorieExtraKeyButtonClick(View view, String key, boolean ctrlDown, boolean altDown, boolean shiftDown, boolean metaDown, boolean fnDown) {
         if ("KEYBOARD".equals(key))
             toggleKeyboardVisibility(mActivity);
+        else if ("LAYOUT".equals(key) || "MAPPER".equals(key))
+            mActivity.startActivity(new Intent(mActivity, VirtualKeyMapperActivity.class) {{ setAction(ACTION_START_MAPPER_ACTIVITY); }});
         else if ("DRAWER".equals(key) || "PREFERENCES".equals(key))
             mActivity.startActivity(new Intent(mActivity, LoriePreferences.class) {{ setAction(ACTION_START_PREFERENCES_ACTIVITY); }});
         else if ("EXIT".equals(key))
