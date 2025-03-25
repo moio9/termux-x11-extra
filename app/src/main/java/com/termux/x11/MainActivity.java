@@ -190,13 +190,18 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 Toast.makeText(MainActivity.this, "Termux is not installed.", Toast.LENGTH_LONG).show();
             }
+            try {
+                Thread.sleep(1500); // Wait for app to launch
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
             Intent intent = new Intent();
             intent.setClassName("com.termux", "com.termux.app.RunCommandService");
             intent.setAction("com.termux.RUN_COMMAND");
             intent.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bootx");
             intent.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", new String[]{});
 //            intent.putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home");
-            intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", true);
+            intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", false);
             try {
                 getApplicationContext().startService(intent);
             } catch (Exception e) {
