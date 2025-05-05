@@ -2,10 +2,14 @@ package com.termux.x11.utils;
 
 import static com.termux.shared.termux.extrakeys.ExtraKeysConstants.PRIMARY_KEY_CODES_FOR_STRINGS;
 import static com.termux.x11.MainActivity.ACTION_CUSTOM;
+import static com.termux.x11.MainActivity.getInstance;
+import static com.termux.x11.MainActivity.handler;
 import static com.termux.x11.MainActivity.toggleKeyboardVisibility;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.app.PendingIntent;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -16,6 +20,7 @@ import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -23,7 +28,11 @@ import androidx.annotation.NonNull;
 import com.termux.shared.termux.extrakeys.*;
 import com.termux.x11.LoriePreferences;
 import com.termux.x11.MainActivity;
+import com.termux.x11.R;
 import com.termux.x11.VirtualKeyMapperActivity;
+import com.termux.x11.MainActivity;
+import com.termux.x11.input.TouchInputHandler;
+import com.termux.x11.input.VirtualKeyHandler;
 
 import org.json.JSONException;
 
@@ -42,7 +51,7 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
     private boolean metaDown;
 
     /** Defines the key for extra keys */
-    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[['ESC','/',{key: '-', popup: '|'},'HOME','UP','END','PGUP','PREFERENCES','LAYOUT'], ['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN','KEYBOARD','EXIT']]"; // Double row
+    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[['ESC','/',{key: '-', popup: '|'},'HOME','UP','END','PGUP','PREFERENCES','MAPPER'], ['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN','KEYBOARD','EXIT']]"; // Double row
 
     public TermuxX11ExtraKeys(@NonNull View.OnKeyListener eventlistener, MainActivity activity, ExtraKeysView extrakeysview) {
         mEventListener = eventlistener;
@@ -153,7 +162,7 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
 
     @Override
     public boolean performExtraKeyButtonHapticFeedback(View view, ExtraKeyButton buttonInfo, Button button) {
-        MainActivity.handler.postDelayed(() -> {
+        handler.postDelayed(() -> {
             boolean pressed;
             switch (buttonInfo.key) {
                 case "CTRL":
@@ -182,8 +191,15 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
     public void onLorieExtraKeyButtonClick(View view, String key, boolean ctrlDown, boolean altDown, boolean shiftDown, boolean metaDown, boolean fnDown) {
         if ("KEYBOARD".equals(key))
             toggleKeyboardVisibility(mActivity);
-        else if ("LAYOUT".equals(key) || "MAPPER".equals(key))
+        else if ("MAPPER".equals(key))
             mActivity.startActivity(new Intent(mActivity, VirtualKeyMapperActivity.class) {{ setAction(ACTION_START_MAPPER_ACTIVITY); }});
+        else if (key.startsWith("preset_")) {
+            Context context = getInstance();
+            Activity activity = (Activity) context;
+            FrameLayout container = activity.findViewById(R.id.top);
+            VirtualKeyHandler handler = new VirtualKeyHandler(context);
+            PresetManager.loadPresetAndAddToUI(context, key, container, handler);
+        }
         else if ("DRAWER".equals(key) || "PREFERENCES".equals(key))
             mActivity.startActivity(new Intent(mActivity, LoriePreferences.class) {{ setAction(ACTION_START_PREFERENCES_ACTIVITY); }});
         else if ("EXIT".equals(key))
@@ -220,13 +236,13 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
             String extrakeys = MainActivity.getPrefs().extra_keys_config.get();
             mExtraKeysInfo = new ExtraKeysInfo(extrakeys, "extra-keys-style", ExtraKeysConstants.CONTROL_CHARS_ALIASES);
         } catch (JSONException e) {
-            Toast.makeText(MainActivity.getInstance(), "Could not load and set the \"extra-keys\" property from the properties file: " + e, Toast.LENGTH_LONG).show();
+            Toast.makeText(getInstance(), "Could not load and set the \"extra-keys\" property from the properties file: " + e, Toast.LENGTH_LONG).show();
             Log.e(LOG_TAG, "Could not load and set the \"extra-keys\" property from the properties file: ", e);
 
             try {
                 mExtraKeysInfo = new ExtraKeysInfo(TermuxX11ExtraKeys.DEFAULT_IVALUE_EXTRA_KEYS, "default", ExtraKeysConstants.CONTROL_CHARS_ALIASES);
             } catch (JSONException e2) {
-                Toast.makeText(MainActivity.getInstance(), "Can't create default extra keys", Toast.LENGTH_LONG).show();
+                Toast.makeText(getInstance(), "Can't create default extra keys", Toast.LENGTH_LONG).show();
                 Log.e(LOG_TAG, "Could create default extra keys: ", e);
                 mExtraKeysInfo = null;
             }

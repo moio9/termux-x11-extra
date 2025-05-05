@@ -81,6 +81,7 @@
                 <action android:name="com.termux.x11.CHANGE_PREFERENCE" />
             </intent-filter>
         </receiver>
+
     </application>
     <queries>
         <package android:name="com.termux" />

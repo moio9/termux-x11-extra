@@ -15,5 +15,11 @@
     <item
         android:id="@+id/action_rename"
         android:title="Rename"/>
+    <item
+        android:id="@+id/action_copy"
+        android:title="Copy"/>
+    <item
+        android:id="@+id/action_type"
+        android:title="Set Type"/>
 
 </menu>

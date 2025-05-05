@@ -62,15 +62,21 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.termux.x11.utils.KeyInterceptor;
+import com.termux.x11.utils.PresetManager;
 import com.termux.x11.utils.SamsungDexUtils;
 import com.termux.x11.utils.TermuxX11ExtraKeys;
 
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.StringWriter;
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Objects;
 import java.util.Scanner;
 import java.util.Set;
@@ -81,6 +87,10 @@ import com.termux.x11.Prefs;
 
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 @SuppressWarnings("deprecation")
 public class LoriePreferences extends AppCompatActivity implements PreferenceFragmentCompat.OnPreferenceStartFragmentCallback {
@@ -192,6 +202,10 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
     }
 
     public static class LoriePreferenceFragment extends PreferenceFragmentCompat implements OnPreferenceChangeListener {
+        private static final int REQUEST_EXPORT_FILE = 1001;
+        private static final int REQUEST_IMPORT_FILE = 1002;
+        private String exportPresetJson;
+
         private final Runnable updateLayout = this::updatePreferencesLayout;
         private static final Method onSetInitialValue;
         static {
@@ -309,7 +323,160 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
                     return true;
                 });
             }
+
+            with("export_virtual_keys", pref -> pref.setOnPreferenceClickListener(p -> {
+                Context ctx = requireContext();
+                SharedPreferences prefs = ctx.getSharedPreferences("button_prefs", Context.MODE_PRIVATE);
+
+                List<String> presetNames = new ArrayList<>();
+                for (String key : prefs.getAll().keySet()) {
+                    if (key.startsWith("preset_")) {
+                        presetNames.add(key.substring("preset_".length()));
+                    }
+                }
+                if (presetNames.isEmpty()) {
+                    Toast.makeText(ctx, "No presets found", Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+                presetNames.add(0, "Select All");
+
+                // Dialog
+                boolean[] checkedItems = new boolean[presetNames.size()];
+                List<String> selectedPresets = new ArrayList<>();
+
+                new AlertDialog.Builder(ctx)
+                        .setTitle("Select presets to export")
+                        .setMultiChoiceItems(presetNames.toArray(new String[0]), checkedItems, (dialog, which, isChecked) -> {
+                            String selected = presetNames.get(which);
+                            if ("Select All".equals(selected)) {
+                                AlertDialog alert = (AlertDialog) dialog;
+                                for (int i = 1; i < presetNames.size(); i++) {
+                                    alert.getListView().setItemChecked(i, isChecked);
+                                    if (isChecked) selectedPresets.add(presetNames.get(i));
+                                    else selectedPresets.remove(presetNames.get(i));
+                                }
+                                checkedItems[0] = false;
+                                alert.getListView().setItemChecked(0, false);
+                            } else {
+                                if (isChecked) selectedPresets.add(selected);
+                                else selectedPresets.remove(selected);
+                            }
+                        })
+                        .setPositiveButton("Export", (dialog, which) -> {
+                            if (selectedPresets.isEmpty()) {
+                                Toast.makeText(ctx, "No preset selected", Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            
+                            JSONObject result = new JSONObject();
+                            for (String name : selectedPresets) {
+                                String key = "preset_" + name;
+                                Set<String> set = prefs.getStringSet(key, null);
+                                if (set != null) {
+                                    try {
+                                        result.put(key, new JSONArray(set));
+                                    } catch (JSONException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                }
+                            }
+                            try {
+                                exportPresetJson = result.toString(2);
+                            } catch (JSONException e) {
+                                throw new RuntimeException(e);
+                            }
+
+                            // File picker
+                            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                            intent.setType("application/json");
+                            intent.putExtra(Intent.EXTRA_TITLE, "presets.json");
+                            startActivityForResult(intent, REQUEST_EXPORT_FILE);
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show();
+                return true;
+
+            }));
+            with("import_virtual_keys", pref -> pref.setOnPreferenceClickListener(p -> {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.setType("application/json");
+                startActivityForResult(intent, REQUEST_IMPORT_FILE);
+                return true;
+            }));
+
         }
+
+        @Override
+        public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+            super.onActivityResult(requestCode, resultCode, data);
+            if (data == null || data.getData() == null) return;
+
+            Context context = requireContext();
+            Uri uri = data.getData();
+
+            if (requestCode == REQUEST_EXPORT_FILE) {
+                try {
+                    OutputStream out = context.getContentResolver().openOutputStream(uri);
+                    if (out != null) {
+                        out.write(exportPresetJson.getBytes());
+                        out.close();
+                        Toast.makeText(context, "Exported successfully", Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception e) {
+                    Toast.makeText(context, "Export failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    e.printStackTrace();
+                }
+            } else if (requestCode == REQUEST_IMPORT_FILE) {
+                try {
+                    InputStream in = context.getContentResolver().openInputStream(uri);
+                    if (in != null) {
+                        String json = new Scanner(in).useDelimiter("\\A").next();
+                        in.close();
+
+                        boolean isMulti = json.trim().startsWith("{") && json.contains("preset_");
+
+                        if (isMulti) {
+                            JSONObject allPresets = new JSONObject(json);
+
+                            Iterator<String> keys = allPresets.keys();
+                            while (keys.hasNext()) {
+                                String key = keys.next(); // <- aici definim corect cheia
+                                JSONArray array = allPresets.getJSONArray(key);
+
+                                Set<String> set = new HashSet<>();
+                                for (int i = 0; i < array.length(); i++) {
+                                    set.add(array.getString(i));
+                                }
+
+                                context.getSharedPreferences("button_prefs", Context.MODE_PRIVATE)
+                                        .edit()
+                                        .putStringSet(key, set)
+                                        .apply();
+                            }
+
+                            Toast.makeText(context, "All presets imported", Toast.LENGTH_SHORT).show();
+                    } else {
+                            // Presupunem preset unic
+                            String presetName = "preset_imported";
+                            PresetManager.importPreset(context, presetName, json);
+                            context.getSharedPreferences("button_prefs", Context.MODE_PRIVATE)
+                                    .edit()
+                                    .putString("last_used_preset_" + VirtualKeyMapperActivity.getDisplayId(context), presetName)
+                                    .apply();
+                            Toast.makeText(context, "Preset imported: " + presetName, Toast.LENGTH_SHORT).show();
+                        }
+
+                        // Poți reîncărca presetul în UI dacă e cazul
+                        MainActivity.getInstance().refreshLoadedPreset(true);
+                    }
+                } catch (Exception e) {
+                    Toast.makeText(context, "Import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    e.printStackTrace();
+                }
+            }
+
+        }
+
 
         private void setSummary(CharSequence key, int disabled) {
             Preference pref = findPreference(key);

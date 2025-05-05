@@ -1,7 +1,7 @@
 <!DOCTYPE resources [
     <!ENTITY TERMUX_PACKAGE_NAME "com.termux">
     <!ENTITY TERMUX_APP_NAME "Termux">
-    <!ENTITY TERMUX_X11_APP_NAME "Termux:X11">
+    <!ENTITY TERMUX_X11_APP_NAME "Termux:X11-Extra">
     ]>
 <resources>
     <string name="app_name">&TERMUX_X11_APP_NAME;</string>

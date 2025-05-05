@@ -11,6 +11,7 @@ import static android.view.KeyEvent.KEYCODE_VOLUME_UP;
 
 import android.annotation.SuppressLint;
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.PointF;
@@ -490,6 +491,17 @@ public class TouchInputHandler {
         }
     }
 
+    public class PresetReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if ("SHOW_LOAD_PRESET".equals(intent.getAction())) {
+                Intent activityIntent = new Intent(context, VirtualKeyMapperActivity.class);
+                activityIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                activityIntent.putExtra("open_load_preset", true);
+                context.startActivity(activityIntent);
+            }
+        }
+    }
     public PendingIntent extractIntentFromPreferences(Prefs p, String name, int requestCode) {
         LoriePreferences.PrefsProto.Preference pref = p.keys.get(name + "Action");
         if (pref == null)
@@ -503,8 +515,14 @@ public class TouchInputHandler {
                     setAction(Intent.ACTION_MAIN);
                 }}, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-            case "open layout":  // 🔹 Adaugă suport pentru Layout
+            case "open mapper":  // Mapping
                 return PendingIntent.getActivity(mActivity, requestCode, new Intent(mActivity, VirtualKeyMapperActivity.class), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+            case "open layout": {
+                Intent intent = new Intent(mActivity, TouchInputHandler.PresetReceiver.class);
+                intent.setAction("SHOW_LOAD_PRESET");
+                return PendingIntent.getBroadcast(mActivity, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            }
 
             case "restart activity":
                 return PendingIntent.getActivity(mActivity, requestCode,
