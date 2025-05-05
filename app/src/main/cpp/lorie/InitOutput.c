@@ -831,7 +831,7 @@ static struct present_screen_info loriePresentInfo = {
         // Since there are no other drivers involved here we assume it always fits.
         .check_flip = TrueNoop,
         .flip = loriePresentFlip,
-        .after_flip = loriePresentAfterFlip,
+        //.after_flip = loriePresentAfterFlip,
         .unflip = loriePresentUnflip,
 };
 
