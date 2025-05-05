@@ -22,11 +22,11 @@ public class GamepadInputHandler {
     }
 
     public boolean handleKeyDown(int keyCode, KeyEvent event) {
-        Log.d("DEBUG", "✅ Controller");
         if (keyCode != -1) {
             sendGamepadEvent(keyCode, true);
             return true;
         }
+        Log.d("GamepadInput", "GamepadInputHandler inițializat.");
 
         return false;
     }
@@ -41,7 +41,6 @@ public class GamepadInputHandler {
 
     public boolean handleGenericMotionEvent(MotionEvent event) {
         if (event.getSource() == InputDevice.SOURCE_JOYSTICK || event.getSource() == InputDevice.SOURCE_GAMEPAD) {
-            // Trimite separat fiecare set de axe cu un ID unic
             sendGamepadAxisEvent(event.getAxisValue(MotionEvent.AXIS_X),
                     event.getAxisValue(MotionEvent.AXIS_Y), 0); // Stick Stânga
             sendGamepadAxisEvent(event.getAxisValue(MotionEvent.AXIS_Z),

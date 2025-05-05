@@ -11,6 +11,7 @@ import static com.termux.x11.input.InputStub.*;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import android.graphics.PointF;
+import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 
@@ -173,7 +174,12 @@ public final class InputEventSender {
         // For Enter getUnicodeChar() returns 10 (line feed), but we still
         // want to send it as KeyEvent.
         char unicode = keyCode != KEYCODE_ENTER ? (char) e.getUnicodeChar() : 0;
-        int scancode = (preferScancodes || !no_modifiers) ? e.getScanCode(): 0;
+
+        boolean isGamepad = e.getDevice() != null &&
+                ((e.getDevice().getSources() & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+                        (e.getDevice().getSources() & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK);
+
+        int scancode = (isGamepad || preferScancodes || !no_modifiers) ? e.getScanCode() : 0;
 
         if (!preferScancodes) {
             if (pressed && unicode != 0 && no_modifiers) {

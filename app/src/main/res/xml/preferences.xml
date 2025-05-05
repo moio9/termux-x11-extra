@@ -70,6 +70,17 @@
             android:title="Customize Virtual Keys"
             android:summary="Map, resize, and position virtual keys on the screen."
             android:onClick="openVirtualKeyMapper"/>
+        <Preference
+            android:key="export_virtual_keys"
+            android:title="Export Virtual Key Preset"
+            android:summary="Save the current virtual key layout to a file"
+            android:onClick="onExportVirtualKeys" />
+
+        <Preference
+            android:key="import_virtual_keys"
+            android:title="Import Virtual Key Preset"
+            android:summary="Load a saved virtual key layout from a file"
+            android:onClick="onImportVirtualKeys" />
     </PreferenceScreen>
 
     <PreferenceScreen app:key="userActions">
