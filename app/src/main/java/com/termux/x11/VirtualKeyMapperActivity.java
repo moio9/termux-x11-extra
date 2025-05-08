@@ -197,10 +197,8 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
         String line = id + "," + x + "," + y + "," + width + "," + height + "," + alpha + "," + tag + "," + text + "," + isSlideable + "," + isToggleable;
 
-        // Ștergem orice linie care începe cu același ID, ca să nu avem duplicat
         buttonData.removeIf(data -> data.startsWith(id + ","));
 
-        // Adăugăm noua linie
         buttonData.add(line);
 
         editor.putStringSet("button_data", buttonData);
@@ -275,7 +273,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         builder.setPositiveButton("Apply", (dialog, which) -> {
             int selected = ((AlertDialog) dialog).getListView().getCheckedItemPosition();
 
-            // Resetăm ambele tipuri
             button.setTag(R.id.slideable_flag, false);
             button.setTag(R.id.toggleable_flag, false);
             Drawable defbtn = new Button(this).getBackground();

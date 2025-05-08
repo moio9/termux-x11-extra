@@ -35,7 +35,6 @@ public class VirtualKeyAdapter extends RecyclerView.Adapter<VirtualKeyAdapter.Vi
         VirtualKeyModel key = keyList.get(position);
         holder.keyNameTextView.setText(key.getKeyName());
 
-        // Șterge tasta la apăsarea butonului
         holder.deleteKeyButton.setOnClickListener(v -> deleteListener.onDelete(position));
     }
 
