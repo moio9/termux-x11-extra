@@ -210,4 +210,3 @@ Released under the [GPLv3 license](https://www.gnu.org/licenses/gpl-3.0.html).
 **Ethereum:** 0xa024a505Ec24c7eA163985eC89D56e614B9AdAae
 
 **Paypall:** https://paypal.me/moioyoyo
-th Android NDK and optimized to be used with Termux.
