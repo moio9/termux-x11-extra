@@ -489,6 +489,7 @@ public class TouchInputHandler {
             case "send volume up": return (key, down) -> mActivity.getLorieView().sendKeyEvent(0, KEYCODE_VOLUME_UP, down);
             case "send volume down": return (key, down) -> mActivity.getLorieView().sendKeyEvent(0, KEYCODE_VOLUME_DOWN, down);
             case "send media action": return (key, down) -> mActivity.getLorieView().sendKeyEvent(0, key, down);
+            case "open layout": return (key, down) -> { if (down) mActivity.startActivity(new Intent(mActivity, VirtualKeyMapperActivity.class) {{ setAction(Intent.ACTION_MAIN); }}); };
             default: return noAction;
         }
     }
@@ -521,9 +522,11 @@ public class TouchInputHandler {
                 return PendingIntent.getActivity(mActivity, requestCode, new Intent(mActivity, VirtualKeyMapperActivity.class), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
             case "open layout": {
-                Intent intent = new Intent(mActivity, TouchInputHandler.PresetReceiver.class);
-                intent.setAction("SHOW_LOAD_PRESET");
-                return PendingIntent.getBroadcast(mActivity, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                return PendingIntent.getActivity(mActivity, requestCode, new Intent(mActivity, VirtualKeyMapperActivity.class) {{
+                    putExtra("key", "value");
+                    setPackage(mActivity.getPackageName());
+                    setAction(Intent.ACTION_MAIN);
+                }}, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             }
 
             case "restart activity":

@@ -313,8 +313,6 @@ public class MainActivity extends AppCompatActivity {
 
         gamepadHandler = new GamepadInputHandler(this);
         gamepadHandler.setupGamepadInput();
-
-
     }
 
     @Override
@@ -409,7 +407,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
 
     @Override
     protected void onDestroy() {
