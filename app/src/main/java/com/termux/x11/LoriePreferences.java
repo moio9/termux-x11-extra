@@ -706,6 +706,10 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
                                 result += "\"" + pref.key + "\"=\"" + value + "\"\n";
                             }
                         }
+                        String activePreset = context.getSharedPreferences("button_prefs", Context.MODE_PRIVATE)
+                                .getString("last_used_preset_" + VirtualKeyMapperActivity.getDisplayId(context), null);
+                        if (activePreset != null)
+                            result += "\"active_button_preset\"=\"" + activePreset + "\"\n";
 
                         sendResponse(remote, 0, 2, result.substring(0, result.length() - 1));
                         return;
@@ -751,6 +755,21 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
                                 edit.putString(key, newValue);
                                 break;
                             }
+                            case "active_button_preset": {
+                                String presetName = intent.getStringExtra(key);
+                                if (presetName == null || presetName.isEmpty()) {
+                                    sendResponse(remote, 1, 1, "No preset name specified.");
+                                    return;
+                                }
+                                context.getSharedPreferences("button_prefs", Context.MODE_PRIVATE)
+                                        .edit()
+                                        .putString("last_used_preset_" + VirtualKeyMapperActivity.getDisplayId(context), presetName)
+                                        .apply();
+                                if (MainActivity.getInstance() != null)
+                                    MainActivity.getInstance().refreshLoadedPreset(true);
+                                break;
+                            }
+
                             default: {
                                 PrefsProto.Preference pref = p.keys.get(key);
                                 if (pref != null && pref.type == boolean.class) {

@@ -21,6 +21,7 @@ import android.view.Display;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
@@ -51,7 +52,11 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     private static String SlideColor = "#FFFF99";
     private static Float offset = 120F;
 
-    private View selectedButton;
+    private FrameLayout frameLayoutButtons;
+
+    private final List<Button> selectedButtons = new ArrayList<>();
+    private float dX, dY; // For multi-drag
+    private Button dragStartButton; // To track which button started the drag
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,7 +67,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         Button addNewKeyButton = findViewById(R.id.addNewKeyButton);
         Button savePresetButton = findViewById(R.id.savePresetButton);
         Button loadPresetButton = findViewById(R.id.loadPresetButton);
-
 
         addNewKeyButton.setOnClickListener(v -> addNewButton(null));
 
@@ -85,16 +89,15 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         if (buttonContainer == null) {
             Log.e("DEBUG", "buttonContainer NU a fost găsit!");
         }
-        buttonContainer.setVisibility(View.VISIBLE);
+        buttonContainer = findViewById(R.id.buttonContainer);
 
     }
 
     private void addNewButton(Button button) {
         if (button == null) {
             Button newButton = new Button(this);
-            int newId = generateUniqueButtonId();  // ID unic
+            int newId = generateUniqueButtonId();
             newButton.setId(newId);
-
             newButton.setText("Key " + newId);
             newButton.setLayoutParams(new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -103,66 +106,105 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
             button = newButton;
         }
 
-        registerForContextMenu(button);
         enableDrag(button);
-
-        button.setOnLongClickListener(v -> {
-            openContextMenu(v);
-            return true;
-        });
+        setupSelectionLogic(button);
+        registerForContextMenu(button);
 
         buttonContainer.addView(button);
     }
 
 
+    private void setupSelectionLogic(Button button) {
+        button.setOnClickListener(v -> toggleSelection(button));
+    }
+
+    private void toggleSelection(Button button) {
+        if (selectedButtons.contains(button)) {
+            selectedButtons.remove(button);
+            button.setAlpha(1.0f);
+        } else {
+            selectedButtons.add(button);
+            button.setAlpha(0.5f);
+        }
+    }
+
     private void enableDrag(View view) {
+        final int DRAG_THRESHOLD = ViewConfiguration.get(view.getContext()).getScaledTouchSlop();
+
         view.setOnTouchListener(new View.OnTouchListener() {
-            private float dX, dY;
-            private long touchStartTime;
-            private static final int LONG_PRESS_THRESHOLD = 500;
-            private Handler longPressHandler = new Handler();
-            private Runnable longPressRunnable = () -> view.performLongClick();
+            private float startX, startY;
+            private boolean isDragging = false;
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
-                        dX = v.getX() - event.getRawX();
-                        dY = v.getY() - event.getRawY();
-                        touchStartTime = System.currentTimeMillis();
-                        longPressHandler.postDelayed(longPressRunnable, LONG_PRESS_THRESHOLD);
-                        break;
+                        startX = event.getRawX();
+                        startY = event.getRawY();
+                        isDragging = false;
+                        return false; // Allow other events
 
                     case MotionEvent.ACTION_MOVE:
-                        float deltaX = Math.abs(event.getRawX() - (v.getX() - dX));
-                        float deltaY = Math.abs(event.getRawY() - (v.getY() - dY));
+                        if (isDragging) {
+                            // Continue existing drag
+                            float deltaX = event.getRawX() - startX;
+                            float deltaY = event.getRawY() - startY;
 
-                        if (deltaX > 10 || deltaY > 10) {
-                            longPressHandler.removeCallbacks(longPressRunnable);
+                            for (Button btn : selectedButtons) {
+                                btn.setX(btn.getX() + deltaX);
+                                btn.setY(btn.getY() + deltaY);
+                                saveButtonSettings(btn, offset);
+                            }
+
+                            startX = event.getRawX();
+                            startY = event.getRawY();
+                            return true;
                         }
-
-                        v.setX(event.getRawX() + dX);
-                        v.setY(event.getRawY() + dY);
-
-                        if (v instanceof Button) {
-                            saveButtonSettings((Button) v, offset);
+                        else if (isDragThresholdExceeded(event)) {
+                            // Start new drag
+                            isDragging = true;
+                            v.cancelLongPress(); // Cancel potential long-press
+                            return true;
                         }
-                        break;
+                        return false;
 
                     case MotionEvent.ACTION_UP:
-                        longPressHandler.removeCallbacks(longPressRunnable);
-                        if (v instanceof Button) {
-                            saveButtonSettings((Button) v, offset);
+                        if (isDragging) {
+                            isDragging = false;
+                            return true; // Consume event
                         }
-                        break;
+                        return false;
                 }
-                return true;
+                return false;
+            }
+
+            private boolean isDragThresholdExceeded(MotionEvent event) {
+                float deltaX = Math.abs(event.getRawX() - startX);
+                float deltaY = Math.abs(event.getRawY() - startY);
+                return (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD);
             }
         });
 
         registerForContextMenu(view);
     }
 
+    private void alignSelectedButtonsX() {
+        if (selectedButtons.size() < 2) return;
+        float targetX = selectedButtons.get(0).getX();
+        for (Button btn : selectedButtons) {
+            btn.setX(targetX);
+            saveButtonSettings(btn, offset);
+        }
+    }
+
+    private void alignSelectedButtonsY() {
+        if (selectedButtons.size() < 2) return;
+        float targetY = selectedButtons.get(0).getY();
+        for (Button btn : selectedButtons) {
+            btn.setY(targetY);
+            saveButtonSettings(btn, offset);
+        }
+    }
 
     private int generateUniqueButtonId() {
         SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
@@ -214,85 +256,94 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         super.onCreateContextMenu(menu, v, menuInfo);
         getMenuInflater().inflate(R.menu.button_options_menu, menu);
         menu.setHeaderTitle("Button Options");
-
-        // Setăm referința butonului apăsat
-        selectedButton = v;
+        if (selectedButtons.size() < 2) {
+            menu.findItem(R.id.action_align_x).setVisible(false);
+            menu.findItem(R.id.action_align_y).setVisible(false);
+        } else {
+            menu.findItem(R.id.action_align_x).setVisible(true);
+            menu.findItem(R.id.action_align_y).setVisible(true);
+        }
     }
-
 
     @Override
     public boolean onContextItemSelected(MenuItem item) {
-        if (selectedButton instanceof Button) {
-            Button button = (Button) selectedButton;
-
+        if (selectedButtons != null && !selectedButtons.isEmpty()) {
             if (item.getItemId() == R.id.action_delete) {
-                buttonContainer.removeView(button);
-                removeButtonFromStorage(button.getId());
-                selectedButton = null;
+                for (Button button : selectedButtons) {
+                    buttonContainer.removeView(button);
+                    removeButtonFromStorage(button.getId());
+                }
+                selectedButtons.clear();
                 return true;
 
             } else if (item.getItemId() == R.id.action_transparency) {
-                showTransparencyDialog(button);
+                showTransparencyDialog(selectedButtons);
                 return true;
 
             } else if (item.getItemId() == R.id.action_resize) {
-                showResizeDialog(button);
+                showResizeDialog(selectedButtons);
                 return true;
 
             } else if (item.getItemId() == R.id.action_rename) {
-                showRenameDialog(button);
+                showRenameDialog(selectedButtons);
                 return true;
 
             } else if (item.getItemId() == R.id.action_set_input) {
-                showSetInputDialog(button);
+                showSetInputDialog(selectedButtons);
                 return true;
 
             } else if (item.getItemId() == R.id.action_copy) {
-                copyButton(button);
+                copyButton(selectedButtons);
                 return true;
+
             } else if (item.getItemId() == R.id.action_type) {
-                showButtonTypeDialog(button);
+                showButtonTypeDialog(selectedButtons);
+                return true;
+            }else if (item.getItemId() == R.id.action_align_x) {
+                alignSelectedButtonsX();
                 return true;
             }
+            else if (item.getItemId() == R.id.action_align_y) {
+                alignSelectedButtonsY();
+                return true;
+            }
+
         }
         return super.onContextItemSelected(item);
     }
 
-    private void showButtonTypeDialog(Button button) {
+    private void showButtonTypeDialog(List<Button> buttons) {
+        if (buttons == null || buttons.isEmpty()) return;
         final String[] types = {"None", "Slide", "Toggle"};
-        int currentSelection = 0;
-        if (Boolean.TRUE.equals(button.getTag(R.id.slideable_flag))) {
-            currentSelection = 1;
-        } else if (Boolean.TRUE.equals(button.getTag(R.id.toggleable_flag))) {
-            currentSelection = 2;
-        }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Select Button Type");
-        builder.setSingleChoiceItems(types, currentSelection, null);
+        builder.setSingleChoiceItems(types, 0, null);
+
         builder.setPositiveButton("Apply", (dialog, which) -> {
             int selected = ((AlertDialog) dialog).getListView().getCheckedItemPosition();
 
-            button.setTag(R.id.slideable_flag, false);
-            button.setTag(R.id.toggleable_flag, false);
-            Drawable defbtn = new Button(this).getBackground();
-            button.setBackground(defbtn);
-            button.getBackground().clearColorFilter();
+            for (Button button : buttons) {
+                button.setTag(R.id.slideable_flag, false);
+                button.setTag(R.id.toggleable_flag, false);
+                Drawable defbtn = new Button(this).getBackground();
+                button.setBackground(defbtn);
+                button.getBackground().clearColorFilter();
 
-            if (selected == 1) { // Slide
-                button.setTag(R.id.slideable_flag, true);
-                button.getBackground().setColorFilter(Color.parseColor(SlideColor), android.graphics.PorterDuff.Mode.MULTIPLY);
-            } else if (selected == 2) { // Toggle
-                button.setTag(R.id.toggleable_flag, true);
-                applyToggleStyle(button);
+                if (selected == 1) { // Slide
+                    button.setTag(R.id.slideable_flag, true);
+                    button.getBackground().setColorFilter(Color.parseColor(SlideColor), android.graphics.PorterDuff.Mode.MULTIPLY);
+                } else if (selected == 2) { // Toggle
+                    button.setTag(R.id.toggleable_flag, true);
+                    applyToggleStyle(button);
+                }
+
+                saveButtonSettings(button, offset);
             }
-
-            saveButtonSettings(button, offset);
         });
         builder.setNegativeButton("Cancel", null);
         builder.show();
     }
-
 
     private static void applyToggleStyle(Button button) {
         GradientDrawable drawable = new GradientDrawable();
@@ -306,45 +357,53 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     }
 
 
-    private void copyButton(Button originalButton) {
-        Button copiedButton = new Button(this);
+    private void copyButton(List<Button> buttons) {
+        if (buttons == null || buttons.isEmpty()) return;
+        for (Button originalButton : buttons) {
+            Button copiedButton = new Button(this);
 
-        int newId = generateUniqueButtonId(); // ID unic
-        copiedButton.setId(newId);
-        copiedButton.setText(originalButton.getText() + " (Copy)");
-        copiedButton.setX(originalButton.getX() + 50); // Offset poziție
-        copiedButton.setY(originalButton.getY() + 50);
-        copiedButton.setTag(originalButton.getTag());
+            int newId = generateUniqueButtonId(); // ID unic
+            copiedButton.setId(newId);
+            copiedButton.setText(originalButton.getText() + " (Copy)");
+            copiedButton.setX(originalButton.getX() + 50); // Offset poziție
+            copiedButton.setY(originalButton.getY() + 50);
+            copiedButton.setTag(originalButton.getTag());
 
-        // Copiază dimensiunile exacte
-        FrameLayout.LayoutParams originalParams = (FrameLayout.LayoutParams) originalButton.getLayoutParams();
-        FrameLayout.LayoutParams newParams = new FrameLayout.LayoutParams(originalParams.width, originalParams.height);
-        copiedButton.setLayoutParams(newParams);
+            // Copiază dimensiunile exacte
+            FrameLayout.LayoutParams originalParams = (FrameLayout.LayoutParams) originalButton.getLayoutParams();
+            FrameLayout.LayoutParams newParams = new FrameLayout.LayoutParams(originalParams.width, originalParams.height);
+            copiedButton.setLayoutParams(newParams);
 
-        // Copiază background (shape + alpha)
-        if (originalButton.getBackground() != null) {
-            copiedButton.setBackground(originalButton.getBackground().getConstantState().newDrawable().mutate());
-            copiedButton.getBackground().setAlpha(originalButton.getBackground().getAlpha());
+            // Copiază background (shape + alpha)
+            if (originalButton.getBackground() != null) {
+                copiedButton.setBackground(originalButton.getBackground().getConstantState().newDrawable().mutate());
+                copiedButton.getBackground().setAlpha(originalButton.getBackground().getAlpha());
 
-            // Dacă e slideable, copiem și colorFilter + tag
-            Object isSlideable = originalButton.getTag(R.id.slideable_flag);
-            if (Boolean.TRUE.equals(isSlideable)) {
-                copiedButton.setTag(R.id.slideable_flag, true);
-                copiedButton.getBackground().setColorFilter(Color.parseColor(SlideColor), android.graphics.PorterDuff.Mode.MULTIPLY);
+                // Dacă e slideable, copiem și colorFilter + tag
+                Object isSlideable = originalButton.getTag(R.id.slideable_flag);
+                if (Boolean.TRUE.equals(isSlideable)) {
+                    copiedButton.setTag(R.id.slideable_flag, true);
+                    copiedButton.getBackground().setColorFilter(Color.parseColor(SlideColor), android.graphics.PorterDuff.Mode.MULTIPLY);
+                }
+                Object isToggleable = originalButton.getTag(R.id.toggleable_flag);
+                if (Boolean.TRUE.equals(isToggleable)) {
+                    copiedButton.setTag(R.id.toggleable_flag, true);
+                    applyToggleStyle(copiedButton);
+                }
             }
+
+            // Activăm drag & meniul contextual
+            enableDrag(copiedButton);
+            setupSelectionLogic(copiedButton);
+            registerForContextMenu(copiedButton);
+
+            // Adăugăm în UI
+            buttonContainer.addView(copiedButton);
+
+            // Salvăm în preferințe
+            saveButtonSettings(copiedButton, offset);
         }
-
-        // Activăm drag & meniul contextual
-        enableDrag(copiedButton);
-        registerForContextMenu(copiedButton);
-
-        // Adăugăm în UI
-        buttonContainer.addView(copiedButton);
-
-        // Salvăm în preferințe
-        saveButtonSettings(copiedButton, offset);
-
-        Toast.makeText(this, "✅ Button copied!", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "✅ Button(s) copied!", Toast.LENGTH_SHORT).show();
     }
 
 
@@ -361,9 +420,10 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     }
 
 
-    private void showResizeDialog(Button button) {
+    private void showResizeDialog(List<Button> buttons) {
+        if (buttons == null || buttons.isEmpty()) return;
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Resize Button");
+        builder.setTitle("Resize Button(s)");
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -374,21 +434,21 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         SeekBar widthSeekBar = new SeekBar(this);
         widthSeekBar.setMax(500);
         widthSeekBar.setMin(50);
-        widthSeekBar.setProgress(button.getWidth());
+        widthSeekBar.setProgress(buttons.get(0).getWidth());
 
         TextView heightLabel = new TextView(this);
         heightLabel.setText("Height");
         SeekBar heightSeekBar = new SeekBar(this);
         heightSeekBar.setMax(500);
         heightSeekBar.setMin(50);
-        heightSeekBar.setProgress(button.getHeight());
+        heightSeekBar.setProgress(buttons.get(0).getHeight());
 
         TextView scaleLabel = new TextView(this);
         scaleLabel.setText("Scale Uniformly (Square Size)");
         SeekBar scaleSeekBar = new SeekBar(this);
         scaleSeekBar.setMax(500);
         scaleSeekBar.setMin(50);
-        scaleSeekBar.setProgress(Math.max(button.getWidth(), button.getHeight()));
+        scaleSeekBar.setProgress(Math.max(buttons.get(0).getWidth(), buttons.get(0).getHeight()));
 
         TextView lockLabel = new TextView(this);
         lockLabel.setText("Lock Aspect Ratio");
@@ -409,26 +469,32 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         builder.setPositiveButton("Apply", (dialog, which) -> {
             int width = widthSeekBar.getProgress();
             int height = heightSeekBar.getProgress();
-            button.setLayoutParams(new FrameLayout.LayoutParams(width, height));
-            saveButtonSettings(button);
+            for (Button btn : buttons) {
+                btn.setLayoutParams(new FrameLayout.LayoutParams(width, height));
+                saveButtonSettings(btn);
+            }
         });
 
         builder.setNeutralButton("Scale Uniformly", (dialog, which) -> {
             int scale = scaleSeekBar.getProgress();
-            button.setLayoutParams(new FrameLayout.LayoutParams(scale, scale));
-            saveButtonSettings(button);
+            for (Button btn : buttons) {
+                btn.setLayoutParams(new FrameLayout.LayoutParams(scale, scale));
+                saveButtonSettings(btn);
+            }
         });
 
         builder.setNegativeButton("Reset", (dialog, which) -> {
             int resetSize = 100;
-            button.setLayoutParams(new FrameLayout.LayoutParams(resetSize, resetSize));
-            saveButtonSettings(button);
+            for (Button btn : buttons) {
+                btn.setLayoutParams(new FrameLayout.LayoutParams(resetSize, resetSize));
+                saveButtonSettings(btn);
+            }
         });
 
         widthSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if (lockRatioCheckBox.isChecked()) {
-                    float ratio = button.getHeight() / (float) button.getWidth();
+                    float ratio = buttons.get(0).getHeight() / (float) buttons.get(0).getWidth();
                     heightSeekBar.setProgress(Math.round(progress * ratio));
                 }
             }
@@ -439,7 +505,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         heightSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if (lockRatioCheckBox.isChecked()) {
-                    float ratio = button.getWidth() / (float) button.getHeight();
+                    float ratio = buttons.get(0).getWidth() / (float) buttons.get(0).getHeight();
                     widthSeekBar.setProgress(Math.round(progress * ratio));
                 }
             }
@@ -451,46 +517,23 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     }
 
 
-    private void showTransparencyDialog(Button button) {
+    private void showTransparencyDialog(List<Button> buttons) {
+        if (buttons == null || buttons.isEmpty()) return;
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Adjust Transparency");
 
-        // Slider pentru transparență
         SeekBar transparencySeekBar = new SeekBar(this);
         transparencySeekBar.setMax(255);
         transparencySeekBar.setMin(5);
-        transparencySeekBar.setProgress(button.getBackground().getAlpha());
+        transparencySeekBar.setProgress(buttons.get(0).getBackground().getAlpha());
 
         builder.setView(transparencySeekBar);
 
         builder.setPositiveButton("Apply", (dialog, which) -> {
             int alpha = transparencySeekBar.getProgress();
-            button.getBackground().setAlpha(alpha);
-        });
-
-        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss());
-
-        builder.show();
-    }
-
-    private void showRenameDialog(Button button) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Rename Key");
-
-        // Creăm un input pentru a introduce noul nume
-        EditText input = new EditText(this);
-        input.setText(button.getText().toString()); // Setăm textul actual
-        builder.setView(input);
-
-        // Buton "Apply" pentru confirmare
-        builder.setPositiveButton("Apply", (dialog, which) -> {
-            String newName = input.getText().toString().trim();
-            if (!newName.isEmpty()) {
-                button.setText(newName); // Aplică noul nume pe buton
-                //button.setTag("button_name"); // Salvează numele butonului
-
-                // Salvăm și în SharedPreferences
-                saveButtonSettings(button);
+            for (Button btn : buttons) {
+                btn.getBackground().setAlpha(alpha);
+                saveButtonSettings(btn);
             }
         });
 
@@ -498,6 +541,32 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
         builder.show();
     }
+
+    private void showRenameDialog(List<Button> buttons) {
+        if (buttons == null || buttons.isEmpty()) return;
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Rename Key(s)");
+
+        EditText input = new EditText(this);
+        input.setHint("New name for selected");
+        // Dacă e doar unul selectat, populăm cu numele curent
+        if (buttons.size() == 1) input.setText(buttons.get(0).getText().toString());
+        builder.setView(input);
+
+        builder.setPositiveButton("Apply", (dialog, which) -> {
+            String newName = input.getText().toString().trim();
+            if (!newName.isEmpty()) {
+                for (Button btn : buttons) {
+                    btn.setText(newName);
+                    saveButtonSettings(btn);
+                }
+            }
+        });
+
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
+    }
+
 
 
     private void savePreset(String presetKey) {
@@ -557,6 +626,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
             for (Button btn : buttons) {
                 enableDrag(btn);
+                setupSelectionLogic(btn);
                 registerForContextMenu(btn);
             }
 
@@ -691,7 +761,8 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     }
 
 
-    private void showSetInputDialog(Button button) {
+    private void showSetInputDialog(List<Button> buttons) {
+        if (buttons == null || buttons.isEmpty()) return;
         String[] keys = {
                 "== KEYBOARD ==", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
                 "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
@@ -700,9 +771,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                 "Space", "Enter", "Backspace", "Tab", "Escape", "Delete", "Insert",
                 "Home", "End", "Page Up", "Page Down", "↑", "↓", "←", "→",
                 "Alt", "Ctrl", "Shift",
-
-                "== MOUSE ==", "Mouse_Left", "Mouse_Right", "Mouse_Middle",
-
+                "== MOUSE ==", "Mouse_Left", "Mouse_Right", "Mouse_Middle", "Mouse_Track",
                 "== GAMEPAD ==", "Gamepad_A", "Gamepad_B", "Gamepad_X", "Gamepad_Y",
                 "Gamepad_LB", "Gamepad_RB", "Gamepad_LT", "Gamepad_RT",
                 "Gamepad_Start", "Gamepad_Select", "Gamepad_DPad_Up", "Gamepad_DPad_Down",
@@ -710,7 +779,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                 "Gamepad_LS_Right", "Gamepad_LS_Up", "Gamepad_LS_Down",
                 "Gamepad_RS_Left", "Gamepad_RS_Right", "Gamepad_RS_Up",
                 "Gamepad_RS_Down", "Gamepad_LT_Max", "Gamepad_RT_Max",
-
+                "Gamepad_LS", "Gamepad_RS", "Gamepad_LT", "Gamepad_LR",
                 "== MISC ==", "EMPTY"
         };
 
@@ -745,19 +814,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         listView.setAdapter(adapter);
         listView.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
 
-        // Preselectăm
-        Object tag = button.getTag();
-        if (tag instanceof String) {
-            String[] alreadySet = ((String) tag).split("\\+");
-            for (int i = 0; i < keys.length; i++) {
-                for (String k : alreadySet) {
-                    if (keys[i].equals(k)) {
-                        listView.setItemChecked(i, true);
-                        selectedKeys.add(k);
-                    }
-                }
-            }
-        }
+        // Poți preselecta aici dacă vrei, dar pentru multi probabil nu contează
 
         listView.setOnItemClickListener((parent, view, position, id) -> {
             String key = keys[position];
@@ -777,9 +834,11 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         builder.setPositiveButton("Apply", (dialog, which) -> {
             if (!selectedKeys.isEmpty()) {
                 String tagValue = String.join("+", selectedKeys);
-                button.setTag(tagValue);
-                button.setText(tagValue);
-                saveButtonSettings(button, offset);
+                for (Button btn : buttons) {
+                    btn.setTag(tagValue);
+                    btn.setText(tagValue);
+                    saveButtonSettings(btn, offset);
+                }
             }
         });
 

@@ -18,11 +18,17 @@ import com.termux.x11.MainActivity;
 import com.termux.x11.R;
 import com.termux.x11.input.GamepadInputHandler;
 
+import java.util.Arrays;
+import java.util.List;
+
 public class VirtualKeyHandler {
     private final Context context;
     private final SparseArray<View> activeButtons = new SparseArray<>();
 
     private GamepadInputHandler gamepadHandler;
+    private float lastTouchX;
+    private float lastTouchY;
+    private Boolean isMouseTrackingActive = false;
 
     public VirtualKeyHandler(Context context) {
         this.context = context;
@@ -47,6 +53,13 @@ public class VirtualKeyHandler {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                 case MotionEvent.ACTION_POINTER_DOWN:
+                    if (Arrays.asList(tag.split("\\+")).contains("Mouse_Track")) {
+                        lastTouchX = event.getRawX();
+                        lastTouchY = event.getRawY();
+                        isMouseTrackingActive = true;
+                        return true;
+                    }
+
                     if (isSlideable) {
                         handleButtonPress(lorieView, pointerId, button);
                         activeButtons.put(pointerId, button);
@@ -65,7 +78,62 @@ public class VirtualKeyHandler {
                     break;
 
                 case MotionEvent.ACTION_MOVE:
+                    if (tag.contains("Mouse_Track") && isMouseTrackingActive) {
+                        float currentX = event.getRawX();
+                        float currentY = event.getRawY();
+
+                        float deltaX = currentX - lastTouchX;
+                        float deltaY = currentY - lastTouchY;
+
+                        if (Math.abs(deltaX) < 0.5f && Math.abs(deltaY) < 0.5f) return true;
+
+                        lorieView.sendMouseEvent(deltaX, deltaY, 0, false, true);
+
+                        lastTouchX = currentX;
+                        lastTouchY = currentY;
+                    }
+
+                    if (tag.equals("Gamepad_LS") || tag.equals("Gamepad_RS")) {
+                        float centerX = v.getX() + v.getWidth() / 2f;
+                        float centerY = v.getY() + v.getHeight() / 2f;
+
+                        float dx = (event.getRawX() - centerX) / (v.getWidth() / 2f);
+                        float dy = (event.getRawY() - centerY) / (v.getHeight() / 2f);
+
+                        dx = Math.max(-1f, Math.min(1f, dx));
+                        dy = Math.max(-1f, Math.min(1f, dy));
+
+                        int stickId = tag.contains("RS") ? 1 : 0;
+
+                        lorieView.sendGamepadEvent(0, true, dx, dy, stickId);
+                    }
+                    if (tag.equals("Gamepad_LT") || tag.equals("Gamepad_RT")) {
+                        int stickId = 2;
+                        float value = 0;
+
+                        if (event.getActionMasked() == MotionEvent.ACTION_DOWN ||
+                                event.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN ||
+                                event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+
+                            float pos = event.getY() / v.getHeight();
+                            value = Math.max(0f, Math.min(1f, -pos));
+                            lorieView.sendGamepadEvent(0, true, tag.equals("Gamepad_LT") ? value : 0, tag.equals("Gamepad_RT") ? value : 0, stickId);
+                            return true;
+                        }
+
+                        if (event.getActionMasked() == MotionEvent.ACTION_UP ||
+                                event.getActionMasked() == MotionEvent.ACTION_POINTER_UP ||
+                                event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+
+                            lorieView.sendGamepadEvent(0, false, 0, 0, stickId);
+                            return true;
+                        }
+                    }
+
+
+
                     if (isSlideable) {
+                        // existing slide logic
                         float x = event.getX();
                         float y = event.getY();
 
@@ -83,7 +151,16 @@ public class VirtualKeyHandler {
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_POINTER_UP:
                 case MotionEvent.ACTION_CANCEL:
-                    // Dacă e slideable sau normal, facem release
+                    if (tag.contains("Mouse_Track")) {
+                        isMouseTrackingActive = false;
+                        lastTouchX = -1;
+                        lastTouchY = -1;
+                    }
+
+                    if (tag.equals("Gamepad_LS") || tag.equals("Gamepad_RS")) {
+                        int stickId = tag.contains("RS") ? 1 : 0;
+                        lorieView.sendGamepadEvent(0, false, 0, 0, stickId);
+                    }
                     if (!isToggleable || isSlideable) {
                         View pressed = activeButtons.get(pointerId);
                         if (pressed != null) {
@@ -103,6 +180,8 @@ public class VirtualKeyHandler {
         if (tag == null) return;
 
         String[] keys = tag.split("\\+");
+        List<String> keyList = Arrays.asList(keys);
+        if (keyList.size() == 1 && keyList.contains("Mouse_Track")) return;
         for (String key : keys) {
             key = key.trim();
             if (key.contains(":")) key = key.split(":")[0];
@@ -111,17 +190,19 @@ public class VirtualKeyHandler {
                 int code = getGamepadKeyCode(key);
                 int id = getGamepadButtonCode(key);
                 if (code != -1) {
-                    //lorieView.sendKeyEvent(code, code, true); just in case
                     lorieView.sendGamepadEvent(id, true, 0,0,0);
-                }else{
+                } else {
                     handleGamepadAnalogPress(key, lorieView);
                 }
             } else if (key.startsWith("Mouse")) {
-                int code = getMouseButtonCode(key);
-                if (code != -1) {
-                    lorieView.sendMouseEvent(0.0F, 0.0F, code, true, false);
+                if (!key.equals("Mouse_Track")) {
+                    int code = getMouseButtonCode(key);
+                    if (code != -1) {
+                        lorieView.sendMouseEvent(0.0F, 0.0F, code, true, false);
+                    }
                 }
-            } else {
+            }
+            else {
                 int code = getKeyEventCode(key);
                 if (code != -1) {
                     lorieView.sendKeyEvent(code, code, true);
@@ -138,6 +219,8 @@ public class VirtualKeyHandler {
         if (tag == null) return;
 
         String[] keys = tag.split("\\+");
+        List<String> keyList = Arrays.asList(keys);
+        if (keyList.size() == 1 && keyList.contains("Mouse_Track")) return;
         for (String key : keys) {
             key = key.trim();
             if (key.contains(":")) key = key.split(":")[0];
@@ -146,17 +229,25 @@ public class VirtualKeyHandler {
                 int code = getGamepadKeyCode(key);
                 int id = getGamepadButtonCode(key);
                 if (code != -1) {
-                    //lorieView.sendKeyEvent(code, code, false);
                     lorieView.sendGamepadEvent(id, false, 0,0,0);
-                }else{
+                } else {
                     handleGamepadAnalogRelease(key, lorieView);
                 }
             } else if (key.startsWith("Mouse")) {
-                int code = getMouseButtonCode(key);
-                if (code != -1) {
-                    lorieView.sendMouseEvent(0.0F, 0.0F, code, false, false);
+                if (!key.equals("Mouse_Track")) {
+                    int code = getMouseButtonCode(key);
+                    if (code != -1) {
+                        lorieView.sendMouseEvent(0.0F, 0.0F, code, false, false);
+                    }
                 }
-            } else {
+
+            }
+            if (key.equals("Gamepad_LT")) {
+                lorieView.sendGamepadEvent(0, false, 0, 0, 2);
+            } else if (key.equals("Gamepad_RT")) {
+                lorieView.sendGamepadEvent(0, false, 0, 0, 2);
+            }
+            else {
                 int code = getKeyEventCode(key);
                 if (code != -1) {
                     lorieView.sendKeyEvent(code, code, false);

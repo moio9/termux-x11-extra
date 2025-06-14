@@ -21,5 +21,11 @@
     <item
         android:id="@+id/action_type"
         android:title="Set Type"/>
+    <item
+        android:id="@+id/action_align_x"
+        android:title="Align X"/>
+    <item
+        android:id="@+id/action_align_y"
+        android:title="Align Y"/>
 
 </menu>
