@@ -529,7 +529,7 @@ public class VirtualKeyHandler {
                 return 39;
             case "'":
                 return 40;
-            case ",":
+            case "，":
                 return 51;
             case ".":
                 return 52;
