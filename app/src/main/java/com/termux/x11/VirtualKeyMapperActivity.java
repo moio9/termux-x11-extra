@@ -767,6 +767,8 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                 "== KEYBOARD ==", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
                 "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
                 "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+                ",", "=", "-", "[", "]", "\\", ";", "'", "/", ".",
+                "`", // backtick
                 "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
                 "Space", "Enter", "Backspace", "Tab", "Escape", "Delete", "Insert",
                 "Home", "End", "Page Up", "Page Down", "↑", "↓", "←", "→",
@@ -779,7 +781,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                 "Gamepad_LS_Right", "Gamepad_LS_Up", "Gamepad_LS_Down",
                 "Gamepad_RS_Left", "Gamepad_RS_Right", "Gamepad_RS_Up",
                 "Gamepad_RS_Down", "Gamepad_LT_Max", "Gamepad_RT_Max",
-                "Gamepad_LS", "Gamepad_RS", "Gamepad_LT", "Gamepad_LR",
+                "Gamepad_LS", "Gamepad_RS", "Gamepad_LT", "Gamepad_RT",
                 "== MISC ==", "EMPTY"
         };
 
@@ -814,7 +816,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         listView.setAdapter(adapter);
         listView.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
 
-        // Poți preselecta aici dacă vrei, dar pentru multi probabil nu contează
 
         listView.setOnItemClickListener((parent, view, position, id) -> {
             String key = keys[position];
@@ -938,13 +939,10 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         Set<String> defaultPreset = prefs.getStringSet(emptyPresetName, null);
 
         if (defaultPreset == null) {
-            // Dacă presetul „empty” nu există, îl creăm
             SharedPreferences.Editor editor = prefs.edit();
 
-            // Cream un set gol de butoane
             Set<String> emptyPreset = new HashSet<>();
 
-            // Salvăm presetul gol
             editor.putStringSet("Empty", emptyPreset);
             editor.apply();
 
