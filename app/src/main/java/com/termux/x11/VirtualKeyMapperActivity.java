@@ -653,9 +653,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     }
 
 
-    /**
-     * Funcție pentru a extrage preseturile disponibile
-     */
     public static List<String> getPresetNames(SharedPreferences prefs) {
         Set<String> presetKeys = prefs.getAll().keySet();
         List<String> presetNames = new ArrayList<>();
@@ -668,9 +665,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         return presetNames;
     }
 
-    /**
-     * Afișează opțiuni pentru un preset (Load, Rename, Delete) și actualizează lista în timp real
-     */
+
     private void showPresetOptionsDialog(String presetKey, FrameLayout mainContainer, VirtualKeyHandler virtualKeyHandler, ArrayAdapter<String> adapter, List<String> presetNames) {
         String presetName = presetKey.replace("preset_", "");
 
@@ -721,7 +716,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                 editor.remove(oldPresetKey);
                 editor.apply();
 
-                // 🔄 Actualizează lista în timp real
                 presetNames.remove(oldPresetKey.replace("preset_", ""));
                 presetNames.add(newPresetName);
                 adapter.notifyDataSetChanged();
@@ -770,7 +764,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                 "，", "=", "-", "[", "]", "\\", ";", "'", "/", ".",
                 "`", // backtick
                 "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
-                "Space", "Enter", "Backspace", "Tab", "Escape", "Delete", "Insert",
+                "Space", "Enter", "Backspace", "Tab", "Escape", "Delete", "Insert", "◆",
                 "Home", "End", "Page Up", "Page Down", "↑", "↓", "←", "→",
                 "Alt", "Ctrl", "Shift",
                 "== MOUSE ==", "Mouse_Left", "Mouse_Right", "Mouse_Middle", "Mouse_Track",

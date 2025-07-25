@@ -2,7 +2,10 @@ package com.termux.x11.input;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.graphics.Color;
 import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.provider.ContactsContract;
 import android.util.Log;
@@ -66,9 +69,11 @@ public class VirtualKeyHandler {
                     } else if (isToggleable) {
                         if (button.isSelected()) {
                             handleButtonRelease(lorieView, pointerId, button);
+                            updateToggleVisual(button, true);
                             button.setSelected(false);
                         } else {
                             handleButtonPress(lorieView, pointerId, button);
+                            updateToggleVisual(button, false);
                             button.setSelected(true);
                         }
                     } else {
@@ -129,8 +134,6 @@ public class VirtualKeyHandler {
                             return true;
                         }
                     }
-
-
 
                     if (isSlideable) {
                         float x = event.getX();
@@ -286,6 +289,21 @@ public class VirtualKeyHandler {
         }
         return null;
     }
+
+    private void updateToggleVisual(Button button, boolean selected) {
+        button.animate()
+            .scaleX(selected ? 1.1f : 1f)
+            .scaleY(selected ? 1.1f : 1f)
+            .setDuration(120)
+            .start();
+
+        Drawable bg = button.getBackground();
+        if (bg instanceof GradientDrawable) {
+            ((GradientDrawable) bg).mutate(); // evită efectul global
+            ((GradientDrawable) bg).setColor(selected ? Color.parseColor("#33AA33") : Color.GRAY);
+        }
+    }
+
 
     private int handleGamepadAnalogPress(String key, LorieView lorie) {
         switch (key) {
@@ -535,6 +553,8 @@ public class VirtualKeyHandler {
                 return 52;
             case "/":
                 return 53;
+            case "◆":
+                return 125;
             default:
                 return -1;
         }
