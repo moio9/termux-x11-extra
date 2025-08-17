@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+
     <string-array name="touchscreenInputModesEntries">
         <item>Trackpad</item>
         <item>Simulated touchscreen</item>
@@ -10,6 +11,7 @@
         <item>2</item>
         <item>3</item>
     </string-array>
+
     <string-array name="transformCapturedPointerEntries">
         <item>No</item>
         <item>Clockwise</item>
@@ -24,6 +26,7 @@
         <item>ud</item>
         <item>at</item>
     </string-array>
+
     <string-array name="displayResolutionVariants">
         <item>native</item>
         <item>scaled</item>
@@ -56,6 +59,7 @@
         <item>3840x2160</item>
         <item>7680x4320</item>
     </string-array>
+
     <string-array name="userActionsValues">
         <item>no action</item>
         <item>toggle soft keyboard</item>
@@ -68,22 +72,110 @@
         <item>exit</item>
     </string-array>
     <string-array name="userActionsVolumeDownValues">
-        <item>@array/userActionsValues</item>
+        <item>no action</item>
+        <item>toggle soft keyboard</item>
+        <item>toggle additional key bar</item>
+        <item>open preferences</item>
+        <item>open layout</item>
+        <item>release pointer and keyboard capture</item>
+        <item>toggle fullscreen</item>
+        <item>restart activity</item>
+        <item>exit</item>
         <item>send volume down</item>
     </string-array>
+
     <string-array name="userActionsVolumeUpValues">
-        <item>@array/userActionsValues</item>
+        <item>no action</item>
+        <item>toggle soft keyboard</item>
+        <item>toggle additional key bar</item>
+        <item>open preferences</item>
+        <item>open layout</item>
+        <item>release pointer and keyboard capture</item>
+        <item>toggle fullscreen</item>
+        <item>restart activity</item>
+        <item>exit</item>
         <item>send volume up</item>
     </string-array>
+
     <string-array name="userActionsMediaKeyValues">
-        <item>@array/userActionsValues</item>
+        <item>no action</item>
+        <item>toggle soft keyboard</item>
+        <item>toggle additional key bar</item>
+        <item>open preferences</item>
+        <item>open layout</item>
+        <item>release pointer and keyboard capture</item>
+        <item>toggle fullscreen</item>
+        <item>restart activity</item>
+        <item>exit</item>
         <item>send media action</item>
     </string-array>
+
     <string-array name="forceOrientationVariants">
         <item>auto</item>
         <item>portrait</item>
         <item>landscape</item>
         <item>reverse portrait</item>
         <item>reverse landscape</item>
+    </string-array>
+
+    <!-- le ai deja pe acestea, dar le las aici pentru completitudine -->
+    <string-array name="gamepadVibrateEntries">
+        <item>Controller</item>
+        <item>Telefon</item>
+        <item>Ambele</item>
+        <item>Oprit</item>
+    </string-array>
+    <string-array name="gamepadVibrateValues">
+        <item>device</item>
+        <item>phone</item>
+        <item>both</item>
+        <item>off</item>
+    </string-array>
+
+    <!-- (opțional) Mod controller: fizic/virtual/ambele -->
+    <string-array name="gamepad_mode_entries">
+        <item>Fizic</item>
+        <item>Virtual</item>
+        <item>Ambele</item>
+    </string-array>
+    <string-array name="gamepad_mode_values">
+        <item>physical</item>
+        <item>virtual</item>
+        <item>both</item>
+    </string-array>
+
+    <string-array name="gamepad_state_hz_values">
+        <item>60</item>
+        <item>90</item>
+        <item>125</item>
+        <item>250</item>
+        <item>500</item>
+    </string-array>
+    <string-array name="gamepadInputTypeEntries">
+        <item>All</item>
+        <item>DirectInput</item>
+        <item>XInput</item>
+        <item>None</item>
+    </string-array>
+    <string-array name="gamepadInputTypeValues">
+        <item>all</item>
+        <item>dinput</item>
+        <item>xinput</item>
+        <item>none</item>
+    </string-array>
+
+    <string-array name="gamepadModeEntries">
+        <item>Raw</item>
+        <item>Mapped</item>
+    </string-array>
+    <string-array name="gamepadModeValues">
+        <item>raw</item>
+        <item>mapped</item>
+    </string-array>
+    <string-array name="gamepadIDs">
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
     </string-array>
 </resources>

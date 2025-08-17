@@ -27,6 +27,7 @@ import androidx.annotation.NonNull;
 
 import com.termux.shared.termux.extrakeys.*;
 import com.termux.x11.LoriePreferences;
+import com.termux.x11.LorieView;
 import com.termux.x11.MainActivity;
 import com.termux.x11.R;
 import com.termux.x11.VirtualKeyMapperActivity;
@@ -197,7 +198,13 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
             Context context = getInstance();
             Activity activity = (Activity) context;
             FrameLayout container = activity.findViewById(R.id.top);
-            VirtualKeyHandler handler = new VirtualKeyHandler(context);
+            MainActivity act = (MainActivity) activity;
+            VirtualKeyHandler handler = new VirtualKeyHandler(
+                    context,
+                    act.getLorieView(),                          // sau null dacă nu vrei deloc Lorie
+                    act.getGamepadIpc(),
+                    act.getGamepadState());
+
             PresetManager.loadPresetAndAddToUI(context, key, container, handler);
         }
         else if ("DRAWER".equals(key) || "PREFERENCES".equals(key))

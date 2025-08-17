@@ -3,40 +3,64 @@ package com.termux.x11.input;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Color;
-import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.os.Bundle;
-import android.provider.ContactsContract;
 import android.util.Log;
 import android.util.SparseArray;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.Toast;
 
 import com.termux.x11.LorieView;
 import com.termux.x11.MainActivity;
 import com.termux.x11.R;
-import com.termux.x11.input.GamepadInputHandler;
+import com.termux.x11.ipc.GamepadIpc;
 
 import java.util.Arrays;
 import java.util.List;
 
 public class VirtualKeyHandler {
-    private final Context context;
-    private final SparseArray<View> activeButtons = new SparseArray<>();
+    private final Context context; // Fă-l final dacă e inițializat în constructor și nu se schimbă
+    private final LorieView lorieView; // Fă-l final dacă e inițializat în constructor și nu se schimbă
+    private final GamepadIpc ipc; // Fă-l final dacă e inițializat în constructor și nu se schimbă
+    private final GamepadIpc.GamepadState gpState; // Fă-l final dacă e inițializat în constructor și nu se schimbă
 
-    private GamepadInputHandler gamepadHandler;
+    private final SparseArray<View> activeButtons = new SparseArray<>();
+    private final GamepadInputHandler gamepadHandler; // Fă-l final dacă e inițializat în constructor și nu se schimbă
+
     private float lastTouchX;
     private float lastTouchY;
-    private Boolean isMouseTrackingActive = false;
+    private boolean isMouseTrackingActive = false; // Folosește boolean primitiv dacă null nu e o stare validă
 
-    public VirtualKeyHandler(Context context) {
+    // Constructor
+    public VirtualKeyHandler(Context context, LorieView lorieView, GamepadIpc ipc, GamepadIpc.GamepadState gpState) {
         this.context = context;
-        gamepadHandler = new GamepadInputHandler(context);
-        gamepadHandler.setupGamepadInput();
+        this.lorieView = lorieView;
+        this.ipc = ipc;
+        this.gpState = gpState;
+
+        // Verificări pentru null (opțional, dar recomandat)
+        if (this.context == null) {
+            throw new IllegalArgumentException("Context cannot be null in VirtualKeyHandler");
+        }
+        if (this.lorieView == null) {
+            Log.w("VirtualKeyHandler", "LorieView is null. Some functionalities might be affected.");
+            // Poți arunca o excepție dacă LorieView este absolut necesar de la început
+            // throw new IllegalArgumentException("LorieView cannot be null");
+        }
+        if (this.ipc == null) {
+            Log.w("VirtualKeyHandler", "IPC interface is null.");
+            // Gestionează corespunzător
+        }
+        if (this.gpState == null) {
+            Log.w("VirtualKeyHandler", "GamepadState is null.");
+            // Gestionează corespunzător
+        }
+
+        // Inițializează GamepadInputHandler cu membrii deja stocați
+        this.gamepadHandler = new GamepadInputHandler(context, lorieView, ipc, gpState,true);
+        this.gamepadHandler.setupGamepadInput();
     }
 
 

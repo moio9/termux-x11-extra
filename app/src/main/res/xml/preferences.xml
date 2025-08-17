@@ -2,18 +2,19 @@
 <PreferenceScreen xmlns:tools="http://schemas.android.com/tools"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:android="http://schemas.android.com/apk/res/android">
+
     <PreferenceScreen app:key="main" app:title="@string/pref_main">
         <Preference app:title="@string/pref_output" app:fragment="output" />
         <Preference app:title="@string/pref_pointer" app:fragment="pointer" />
         <Preference app:title="@string/pref_kbd" app:fragment="kbd" />
-        <Preference app:key="controller" app:title="Controller" />
+        <!-- Controller CA LA RESTUL: item in main care deschide sub-screen-ul "controller" -->
+        <Preference app:title="Controller" app:fragment="controller" />
         <Preference app:title="@string/pref_other" app:fragment="other" />
-        <Preference
-            app:key="version"
-            app:title="@string/pref_version" />
+        <Preference app:key="version" app:title="@string/pref_version" />
     </PreferenceScreen>
+
     <PreferenceScreen app:key="output">
-        <ListPreference app:key="displayResolutionMode" app:defaultValue="native" app:entries="@array/displayResolutionVariants" app:entryValues="@array/displayResolutionVariants"  />
+        <ListPreference app:key="displayResolutionMode" app:defaultValue="native" app:entries="@array/displayResolutionVariants" app:entryValues="@array/displayResolutionVariants" />
         <SeekBarPreference app:key="displayScale" app:defaultValue="100" app:min="30" android:max="300" app:seekBarIncrement="10" app:showSeekBarValue="true" app:updatesContinuously="true" />
         <ListPreference app:key="displayResolutionExact" app:defaultValue="1280x1024" app:entries="@array/displayResolution" app:entryValues="@array/displayResolution" tools:ignore="DuplicateSpeakableTextCheck" />
         <EditTextPreference app:key="displayResolutionCustom" app:defaultValue="1280x1024" app:useSimpleSummaryProvider="true" />
@@ -26,6 +27,7 @@
         <SwitchPreferenceCompat app:key="hideCutout" app:defaultValue="false" />
         <SwitchPreferenceCompat app:defaultValue="true" app:key="keepScreenOn" />
     </PreferenceScreen>
+
     <PreferenceScreen app:key="pointer">
         <ListPreference app:key="touchMode" app:defaultValue="1" app:entries="@array/touchscreenInputModesEntries" app:entryValues="@array/touchscreenInputModesValues" />
         <SwitchPreferenceCompat app:key="scaleTouchpad" app:defaultValue="true" />
@@ -38,49 +40,54 @@
         <SeekBarPreference app:key="capturedPointerSpeedFactor" app:defaultValue="100" app:min="1" android:max="300" app:seekBarIncrement="1" app:showSeekBarValue="true" app:updatesContinuously="true" />
         <SwitchPreferenceCompat app:key="tapToMove" app:defaultValue="false" />
     </PreferenceScreen>
+
     <PreferenceScreen app:key="kbd">
         <SwitchPreferenceCompat app:key="showAdditionalKbd" app:defaultValue="true" />
-        <!-- this preference should be a part of `Prefs` but should not appear in PreferenceScreen -->
         <SwitchPreferenceCompat app:key="additionalKbdVisible" app:defaultValue="true" app:isPreferenceVisible="false" />
         <SwitchPreferenceCompat app:key="showIMEWhileExternalConnected" app:defaultValue="true" />
         <SwitchPreferenceCompat app:key="preferScancodes" app:defaultValue="false" />
         <SwitchPreferenceCompat app:key="hardwareKbdScancodesWorkaround" app:defaultValue="true" />
         <SwitchPreferenceCompat app:key="dexMetaKeyCapture" app:defaultValue="false" />
         <Preference app:key="enableAccessibilityService">
-            <intent android:action="android.settings.ACCESSIBILITY_SETTINGS"/>
+            <intent android:action="android.settings.ACCESSIBILITY_SETTINGS" />
         </Preference>
         <SwitchPreferenceCompat app:key="enableAccessibilityServiceAutomatically" app:defaultValue="false" />
         <SwitchPreferenceCompat app:key="pauseKeyInterceptingWithEsc" app:defaultValue="false" />
         <SwitchPreferenceCompat app:key="filterOutWinkey" app:defaultValue="false" />
         <SwitchPreferenceCompat app:key="enforceCharBasedInput" app:defaultValue="false" />
     </PreferenceScreen>
+
     <PreferenceScreen app:key="other">
         <SwitchPreferenceCompat app:key="clipboardEnable" app:defaultValue="true" />
         <Preference app:key="requestNotificationPermission" />
         <Preference app:key="configureResponseToUserActions" app:fragment="userActions" />
         <SwitchPreferenceCompat app:key="storeSecondaryDisplayPreferencesSeparately" app:defaultValue="false" />
     </PreferenceScreen>
+
     <PreferenceScreen app:key="ekbar">
         <SwitchPreferenceCompat app:key="adjustHeightForEK" app:defaultValue="false" />
         <SwitchPreferenceCompat app:key="useTermuxEKBarBehaviour" app:defaultValue="false" />
         <SeekBarPreference app:key="opacityEKBar" app:defaultValue="100" app:min="1" android:max="100" app:seekBarIncrement="1" app:showSeekBarValue="true" app:updatesContinuously="true" />
         <EditTextPreference app:key="extra_keys_config" />
-        <Preference
-            android:key="editVirtualKeys"
-            android:title="Customize Virtual Keys"
-            android:summary="Map, resize, and position virtual keys on the screen."
-            android:onClick="openVirtualKeyMapper"/>
-        <Preference
-            android:key="export_virtual_keys"
-            android:title="Export Virtual Key Preset"
-            android:summary="Save the current virtual key layout to a file"
-            android:onClick="onExportVirtualKeys" />
+        <Preference android:key="editVirtualKeys" android:title="Customize Virtual Keys" android:summary="Map, resize, and position virtual keys on the screen." android:onClick="openVirtualKeyMapper" />
+        <Preference android:key="export_virtual_keys" android:title="Export Virtual Key Preset" android:summary="Save the current virtual key layout to a file" android:onClick="onExportVirtualKeys" />
+        <Preference android:key="import_virtual_keys" android:title="Import Virtual Key Preset" android:summary="Load a saved virtual key layout from a file" android:onClick="onImportVirtualKeys" />
+        <!-- ATENȚIE: AICI NU mai punem Controller -->
+    </PreferenceScreen>
 
-        <Preference
-            android:key="import_virtual_keys"
-            android:title="Import Virtual Key Preset"
-            android:summary="Load a saved virtual key layout from a file"
-            android:onClick="onImportVirtualKeys" />
+    <!-- Sub-screen-ul Controller (cheia pe care o deschide itemul din MAIN) -->
+    <PreferenceScreen app:key="controller">
+        <ListPreference app:key="gamepadInputType" app:title="Input backend" app:defaultValue="all" app:entries="@array/gamepadInputTypeEntries" app:entryValues="@array/gamepadInputTypeValues" />
+        <ListPreference app:key="gamepadMode" app:title="Mapping mode" app:defaultValue="raw" app:entries="@array/gamepadModeEntries" app:entryValues="@array/gamepadModeValues" />
+        <ListPreference app:key="gamepadVibrate" app:title="Vibration" app:defaultValue="system" app:entries="@array/gamepadVibrateEntries" app:entryValues="@array/gamepadVibrateValues" />
+        <SeekBarPreference app:key="gamepadVibrateStrength" app:title="Vibration strength" app:defaultValue="255" app:min="1" android:max="255" app:seekBarIncrement="5" app:showSeekBarValue="true" app:updatesContinuously="true" />
+        <SeekBarPreference app:key="gamepadStateHz" app:title="Polling rate (Hz)" app:defaultValue="60" app:min="10" android:max="500" app:seekBarIncrement="5" app:showSeekBarValue="true" app:updatesContinuously="true" />
+        <SwitchPreferenceCompat app:key="gamepadForwardX11" app:title="Forward gamepad to X11" app:defaultValue="true" />
+        <EditTextPreference app:key="gamepadName" app:title="Gamepad name" app:defaultValue="Termux-X11 Pad" app:useSimpleSummaryProvider="true" />
+        <ListPreference app:key="gamepadID" app:title="Gamepad ID" app:defaultValue="1" app:entries="@array/gamepadIDs" app:entryValues="@array/gamepadIDs" />
+        <EditTextPreference app:key="gamepadHost" app:title="Host" app:defaultValue="127.0.0.1" app:useSimpleSummaryProvider="true" />
+        <EditTextPreference app:key="gamepadPortRumble" app:title="Gamepad Port" app:defaultValue="4600" app:useSimpleSummaryProvider="true" />
+
     </PreferenceScreen>
 
     <PreferenceScreen app:key="userActions">
@@ -95,4 +102,5 @@
         <ListPreference app:key="notificationButton2Action" app:defaultValue="open layout" app:entries="@array/userActionsValues" app:entryValues="@array/userActionsValues" />
         <ListPreference app:key="mediaKeysAction" app:defaultValue="no action" app:entries="@array/userActionsMediaKeyValues" app:entryValues="@array/userActionsMediaKeyValues" />
     </PreferenceScreen>
+
 </PreferenceScreen>

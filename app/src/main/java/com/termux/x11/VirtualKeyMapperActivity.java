@@ -39,6 +39,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.termux.x11.input.VirtualKeyHandler;
+import com.termux.x11.MainActivity;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -69,29 +70,34 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         Button loadPresetButton = findViewById(R.id.loadPresetButton);
 
         addNewKeyButton.setOnClickListener(v -> addNewButton(null));
-
         savePresetButton.setOnClickListener(v -> showSavePresetDialog());
 
-        VirtualKeyHandler virtualKeyHandler = new VirtualKeyHandler(this);
+        // === FIX: obține instanța MainActivity și trece obiectele către VirtualKeyHandler
+        MainActivity act = MainActivity.getInstance();
+        VirtualKeyHandler virtualKeyHandler = new VirtualKeyHandler(
+                /* context       */ this,
+                /* lorieView     */ (act != null ? act.getLorieView() : null),
+                /* ipc           */ (act != null ? act.getGamepadIpc() : null),
+                /* gamepadState  */ (act != null ? act.getGamepadState() : new com.termux.x11.ipc.GamepadIpc.GamepadState().neutral()));
+
         loadPresetButton.setOnClickListener(v -> showLoadPresetDialog(buttonContainer, virtualKeyHandler));
+
         SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
         showLoadPresetDialog(buttonContainer, virtualKeyHandler);
-        //requestWindowFeature(Window.FEATURE_NO_TITLE);
+
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
+        // === FIX: elimină construcția cu constructorul vechi
         if (getIntent().getBooleanExtra("open_load_preset", false)) {
-            VirtualKeyHandler handler = new VirtualKeyHandler(this);
-            showLoadPresetDialog(buttonContainer, handler);
+            showLoadPresetDialog(buttonContainer, virtualKeyHandler);
         }
 
-        buttonContainer = findViewById(R.id.buttonContainer);
         if (buttonContainer == null) {
             Log.e("DEBUG", "buttonContainer NU a fost găsit!");
         }
-        buttonContainer = findViewById(R.id.buttonContainer);
-
     }
+
 
     private void addNewButton(Button button) {
         if (button == null) {
