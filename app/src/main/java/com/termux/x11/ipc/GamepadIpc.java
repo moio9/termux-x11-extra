@@ -179,7 +179,7 @@ public class GamepadIpc implements Runnable {
                         int left     = bb.getShort(6)  & 0xFFFF;
                         int right    = bb.getShort(8)  & 0xFFFF;
                         int duration = bb.getShort(10) & 0xFFFF;
-                        if (listener != null) listener.onRumble(left*10, right*10, duration);
+                        if (listener != null) listener.onRumble(left, right, duration);
                     }
                     continue;
                 }

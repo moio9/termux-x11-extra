@@ -103,6 +103,8 @@ public class MainActivity extends AppCompatActivity {
     public GamepadIpc getGamepadIpc() { return ipc; }
     public GamepadIpc.GamepadState getGamepadState() { return gpState; }
 
+    public GamepadInputHandler getGamepadHandler() { return gamepadHandler; }
+
     public static final String ACTION_STOP = "com.termux.x11.ACTION_STOP";
     public static final String ACTION_CUSTOM = "com.termux.x11.ACTION_CUSTOM";
 
@@ -565,7 +567,7 @@ public class MainActivity extends AppCompatActivity {
                 String screenID = getDisplayId(this);
                 String lastPreset = prefs.getString("last_used_preset_" + screenID, "preset_empty");
 
-                VirtualKeyHandler virtualKeyHandler = new VirtualKeyHandler(this, getLorieView(), ipc, gpState);
+                virtualKeyHandler = new VirtualKeyHandler(this, getLorieView(), ipc, gpState, gamepadHandler);
                 VirtualKeyMapperActivity virtualKeyMapperActivity = new VirtualKeyMapperActivity();
                 List<Button> buttons = virtualKeyMapperActivity.loadPreset(this, lastPreset, buttonLayer);
 

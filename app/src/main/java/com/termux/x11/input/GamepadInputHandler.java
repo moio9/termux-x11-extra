@@ -3,21 +3,23 @@ package com.termux.x11.input;
 import static com.termux.x11.MainActivity.prefs;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.hardware.input.InputManager; // Import necesar
+import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.util.Log;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+
+import androidx.preference.PreferenceManager;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import com.termux.x11.LorieView;
 import com.termux.x11.Prefs;
 import com.termux.x11.ipc.GamepadIpc;
-// MainActivity și R s-ar putea să nu mai fie necesare dacă LorieView e injectat
-// import com.termux.x11.MainActivity;
-// import com.termux.x11.R;
 
 public class GamepadInputHandler {
     private static final String TAG = "GamepadInput";
@@ -38,6 +40,9 @@ public class GamepadInputHandler {
     private String mode = "both";      // physical|virtual|both
     private String vibrateMode = "device"; // device|phone|both|off
     private int vibrateStrength = 255;
+    private SharedPreferences sp;
+    private boolean useKeybinds = false;
+    private boolean keybindEnabled = true;
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Gamepad-TX");
         t.setPriority(Thread.NORM_PRIORITY);
@@ -89,13 +94,30 @@ public class GamepadInputHandler {
         this.state = state;
         this.forwardToLorie = forwardToLorie;
         this.inputManager = (InputManager) context.getSystemService(Context.INPUT_SERVICE);
+
+        this.sp = PreferenceManager.getDefaultSharedPreferences(context);
+
+        if (this.lorieView != null) {
+            this.lorieView.setFocusableInTouchMode(true);
+            this.lorieView.requestFocus();
+        }
     }
 
     public void reloadPrefs(Prefs prefs){
         mode = prefs.gamepadMode.get();
         vibrateMode = prefs.gamepadVibrate.get();
-        vibrateStrength = prefs.gamepadVibrateStrength.get(); // <— nou
+        vibrateStrength = prefs.gamepadVibrateStrength.get();
         forwardToLorie = prefs.gamepadForwardX11.get();
+
+        // backend = keys ?
+        String backend = prefs.gamepadInputType.get();
+        useKeybinds = "keys".equalsIgnoreCase(backend);
+
+        // opțional: când mapăm în taste, nu mai forward-uim gamepad brut în X11
+        if (useKeybinds) forwardToLorie = false;
+
+        // “Enable key remapper”
+        keybindEnabled = sp.getBoolean("keybindRemapperEnabled", true);
     }
     private int bitForKey(int keyCode) {
         switch (keyCode) {
@@ -115,10 +137,10 @@ public class GamepadInputHandler {
             case KeyEvent.KEYCODE_BUTTON_R1:     return BTN_R1;
 
             case KeyEvent.KEYCODE_BUTTON_START:
-            case KeyEvent.KEYCODE_BUTTON_MODE:   return BTN_START;   // pe unele controllere
+            case KeyEvent.KEYCODE_BUTTON_MODE:   return BTN_START;
 
             case KeyEvent.KEYCODE_BUTTON_SELECT:
-            case KeyEvent.KEYCODE_BACK:          return BTN_SELECT;  // fallback pentru „Back”
+            case KeyEvent.KEYCODE_BACK:          return BTN_SELECT;
 
             case KeyEvent.KEYCODE_BUTTON_THUMBL: return BTN_L3;
             case KeyEvent.KEYCODE_BUTTON_THUMBR: return BTN_R3;
@@ -126,10 +148,68 @@ public class GamepadInputHandler {
         return 0;
     }
 
+    private int parseKey(String v) {
+        if (v == null) return 0;
+        v = v.trim();
+        if (v.equalsIgnoreCase("none")) return 0;
+
+        switch (v.toUpperCase()) {
+            case "ESC": return KeyEvent.KEYCODE_ESCAPE;
+            case "ENTER": return KeyEvent.KEYCODE_ENTER;
+            case "SPACE": return KeyEvent.KEYCODE_SPACE;
+            case "TAB": return KeyEvent.KEYCODE_TAB;
+            case "BACKSPACE": return KeyEvent.KEYCODE_DEL;
+            case "UP": return KeyEvent.KEYCODE_DPAD_UP;
+            case "DOWN": return KeyEvent.KEYCODE_DPAD_DOWN;
+            case "LEFT": return KeyEvent.KEYCODE_DPAD_LEFT;
+            case "RIGHT": return KeyEvent.KEYCODE_DPAD_RIGHT;
+        }
+
+        if (v.length() == 1) {
+            char c = v.charAt(0);
+            if (c >= 'A' && c <= 'Z') return KeyEvent.KEYCODE_A + (c - 'A');
+            if (c >= '0' && c <= '9') return KeyEvent.KEYCODE_0 + (c - '0');
+        }
+        return 0;
+    }
+
+    private int mapForGamepadKeycode(int gamepadKeycode) {
+        switch (gamepadKeycode) {
+            case KeyEvent.KEYCODE_BUTTON_A:   return parseKey(sp.getString("keybind_btn_a", "none"));
+            case KeyEvent.KEYCODE_BUTTON_B:   return parseKey(sp.getString("keybind_btn_b", "none"));
+            case KeyEvent.KEYCODE_BUTTON_X:   return parseKey(sp.getString("keybind_btn_x", "none"));
+            case KeyEvent.KEYCODE_BUTTON_Y:   return parseKey(sp.getString("keybind_btn_y", "none"));
+
+            case KeyEvent.KEYCODE_BUTTON_L1:  return parseKey(sp.getString("keybind_btn_lb", "none"));
+            case KeyEvent.KEYCODE_BUTTON_R1:  return parseKey(sp.getString("keybind_btn_rb", "none"));
+            case KeyEvent.KEYCODE_BUTTON_L2:  return parseKey(sp.getString("keybind_btn_lt", "none")); // digital
+            case KeyEvent.KEYCODE_BUTTON_R2:  return parseKey(sp.getString("keybind_btn_rt", "none")); // digital
+
+            case KeyEvent.KEYCODE_BUTTON_SELECT:
+            case KeyEvent.KEYCODE_BACK:       return parseKey(sp.getString("keybind_btn_back", "none"));
+            case KeyEvent.KEYCODE_BUTTON_START:
+            case KeyEvent.KEYCODE_BUTTON_MODE:return parseKey(sp.getString("keybind_btn_start", "none"));
+
+            case KeyEvent.KEYCODE_BUTTON_THUMBL: return parseKey(sp.getString("keybind_btn_ls", "none"));
+            case KeyEvent.KEYCODE_BUTTON_THUMBR: return parseKey(sp.getString("keybind_btn_rs", "none"));
+
+            case KeyEvent.KEYCODE_DPAD_UP:    return parseKey(sp.getString("keybind_dpad_up", "none"));
+            case KeyEvent.KEYCODE_DPAD_DOWN:  return parseKey(sp.getString("keybind_dpad_down", "none"));
+            case KeyEvent.KEYCODE_DPAD_LEFT:  return parseKey(sp.getString("keybind_dpad_left", "none"));
+            case KeyEvent.KEYCODE_DPAD_RIGHT: return parseKey(sp.getString("keybind_dpad_right", "none"));
+        }
+        return 0;
+    }
+
+    private boolean emitMappedKey(int action, int outKeyCode) {
+        if (outKeyCode == 0 || lorieView == null) return false;
+        long now = SystemClock.uptimeMillis();
+        KeyEvent mapped = new KeyEvent(now, now, action, outKeyCode, 0);
+        return lorieView.dispatchKeyEvent(mapped);
+    }
 
     private void sendAsync() {
         if (ipc == null) return;
-        // copiem valorile primitive ca să nu fie surprinse de mutații în alt eveniment
         final GamepadIpc.GamepadState snap = new GamepadIpc.GamepadState();
         snap.buttons = state.buttons;
         snap.dpad = state.dpad;
@@ -165,7 +245,22 @@ public class GamepadInputHandler {
     }
 
 
+    public void setAxis(GamepadAxis axis, float x, float y) {
+        sendGamepadAxisEvent(x, y, axis);
+    }
+
+    public void setButton(int androidKeyCode, boolean down) {
+        if (down) handleKeyDown(androidKeyCode, null);
+        else      handleKeyUp(androidKeyCode, null);
+    }
+
     public boolean handleKeyDown(int keyCode, KeyEvent e) {
+        if (useKeybinds && keybindEnabled) {
+            int out = mapForGamepadKeycode(keyCode);
+            if (out != 0) return emitMappedKey(KeyEvent.ACTION_DOWN, out);
+        }
+
+        // comportamentul vechi (forward/IPC)
         if (isDpadKey(keyCode)) { setDpadFromKey(keyCode, true); sendAsync(); return true; }
         int bit = bitForKey(keyCode);
         if (bit != 0) { state.buttons |= bit; sendAsync(); return true; }
@@ -173,6 +268,12 @@ public class GamepadInputHandler {
     }
 
     public boolean handleKeyUp(int keyCode, KeyEvent e) {
+        if (useKeybinds && keybindEnabled) {
+            int out = mapForGamepadKeycode(keyCode);
+            if (out != 0) return emitMappedKey(KeyEvent.ACTION_UP, out);
+        }
+
+        // comportamentul vechi (forward/IPC)
         if (isDpadKey(keyCode)) { setDpadFromKey(keyCode, false); sendAsync(); return true; }
         int bit = bitForKey(keyCode);
         if (bit != 0) { state.buttons &= ~bit; sendAsync(); return true; }

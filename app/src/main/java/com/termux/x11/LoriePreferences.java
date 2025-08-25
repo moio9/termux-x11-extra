@@ -516,6 +516,8 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
             setVisible("displayResolutionExact", displayResMode.contentEquals("exact"));
             setVisible("displayResolutionCustom", displayResMode.contentEquals("custom"));
 
+            setVisible("keybinds_section", "keys".equalsIgnoreCase(prefs.gamepadInputType.get()));
+
             setEnabled("dexMetaKeyCapture", !prefs.enableAccessibilityServiceAutomatically.get());
             setEnabled("enableAccessibilityServiceAutomatically", !prefs.dexMetaKeyCapture.get());
             setEnabled("pauseKeyInterceptingWithEsc", prefs.dexMetaKeyCapture.get() ||

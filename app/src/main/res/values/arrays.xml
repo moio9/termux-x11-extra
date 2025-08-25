@@ -118,12 +118,27 @@
         <item>reverse landscape</item>
     </string-array>
 
-    <!-- le ai deja pe acestea, dar le las aici pentru completitudine -->
+    <string-array name="gamepadInputTypeEntries">
+        <item>XDInput</item>
+        <item>XInput</item>
+        <item>DirectInput</item>
+        <item>Gamepad → Keys</item>
+        <item>None</item>
+    </string-array>
+
+    <string-array name="gamepadInputTypeValues">
+        <item>all</item>
+        <item>xinput</item>
+        <item>dinput</item>
+        <item>keys</item>
+        <item>none</item>
+    </string-array>
+
     <string-array name="gamepadVibrateEntries">
         <item>Controller</item>
-        <item>Telefon</item>
-        <item>Ambele</item>
-        <item>Oprit</item>
+        <item>Phone</item>
+        <item>Both</item>
+        <item>Off</item>
     </string-array>
     <string-array name="gamepadVibrateValues">
         <item>device</item>
@@ -132,36 +147,12 @@
         <item>off</item>
     </string-array>
 
-    <!-- (opțional) Mod controller: fizic/virtual/ambele -->
-    <string-array name="gamepad_mode_entries">
-        <item>Fizic</item>
-        <item>Virtual</item>
-        <item>Ambele</item>
-    </string-array>
-    <string-array name="gamepad_mode_values">
-        <item>physical</item>
-        <item>virtual</item>
-        <item>both</item>
-    </string-array>
-
     <string-array name="gamepad_state_hz_values">
         <item>60</item>
         <item>90</item>
         <item>125</item>
         <item>250</item>
         <item>500</item>
-    </string-array>
-    <string-array name="gamepadInputTypeEntries">
-        <item>All</item>
-        <item>DirectInput</item>
-        <item>XInput</item>
-        <item>None</item>
-    </string-array>
-    <string-array name="gamepadInputTypeValues">
-        <item>all</item>
-        <item>dinput</item>
-        <item>xinput</item>
-        <item>none</item>
     </string-array>
 
     <string-array name="gamepadModeEntries">
@@ -172,10 +163,49 @@
         <item>raw</item>
         <item>mapped</item>
     </string-array>
+
     <string-array name="gamepadIDs">
         <item>1</item>
         <item>2</item>
         <item>3</item>
         <item>4</item>
+    </string-array>
+
+    <string-array name="keybindOptionsEntries">
+        <item>none</item>
+
+        <!-- taste de navigație / control -->
+        <item>ESC</item><item>ENTER</item><item>SPACE</item><item>TAB</item>
+        <item>BACKSPACE</item>
+        <item>UP</item><item>DOWN</item><item>LEFT</item><item>RIGHT</item>
+
+        <!-- cifre -->
+        <item>0</item><item>1</item><item>2</item><item>3</item><item>4</item>
+        <item>5</item><item>6</item><item>7</item><item>8</item><item>9</item>
+
+        <!-- litere -->
+        <item>A</item><item>B</item><item>C</item><item>D</item><item>E</item>
+        <item>F</item><item>G</item><item>H</item><item>I</item><item>J</item>
+        <item>K</item><item>L</item><item>M</item><item>N</item><item>O</item>
+        <item>P</item><item>Q</item><item>R</item><item>S</item><item>T</item>
+        <item>U</item><item>V</item><item>W</item><item>X</item><item>Y</item><item>Z</item>
+    </string-array>
+
+    <string-array name="keybindOptionsValues">
+        <!-- le ținem identice cu entries, ca să nu stricăm generatorul -->
+        <item>none</item>
+
+        <item>ESC</item><item>ENTER</item><item>SPACE</item><item>TAB</item>
+        <item>BACKSPACE</item>
+        <item>UP</item><item>DOWN</item><item>LEFT</item><item>RIGHT</item>
+
+        <item>0</item><item>1</item><item>2</item><item>3</item><item>4</item>
+        <item>5</item><item>6</item><item>7</item><item>8</item><item>9</item>
+
+        <item>A</item><item>B</item><item>C</item><item>D</item><item>E</item>
+        <item>F</item><item>G</item><item>H</item><item>I</item><item>J</item>
+        <item>K</item><item>L</item><item>M</item><item>N</item><item>O</item>
+        <item>P</item><item>Q</item><item>R</item><item>S</item><item>T</item>
+        <item>U</item><item>V</item><item>W</item><item>X</item><item>Y</item><item>Z</item>
     </string-array>
 </resources>

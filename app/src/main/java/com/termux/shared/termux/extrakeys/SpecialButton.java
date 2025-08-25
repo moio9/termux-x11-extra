@@ -10,6 +10,7 @@ public class SpecialButton {
     private static final HashMap<String, SpecialButton> map = new HashMap<>();
 
     public static final SpecialButton CTRL = new SpecialButton("CTRL");
+    public static final SpecialButton TAB = new SpecialButton("TAB");
     public static final SpecialButton ALT = new SpecialButton("ALT");
     public static final SpecialButton SHIFT = new SpecialButton("SHIFT");
     public static final SpecialButton META = new SpecialButton("META");

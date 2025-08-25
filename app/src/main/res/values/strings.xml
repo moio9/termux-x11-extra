@@ -113,6 +113,48 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="pref_notificationButton2Action">Notification third button</string>
     <string name="pref_mediaKeysAction">Media keys</string>
 
+    <string-array name="keybindTargetEntries">
+        <item>None</item>
+        <item>ESC</item>
+        <item>TAB</item>
+        <item>ENTER</item>
+        <item>SPACE</item>
+        <item>BACKSPACE</item>
+        <item>DELETE</item>
+        <item>UP</item>
+        <item>DOWN</item>
+        <item>LEFT</item>
+        <item>RIGHT</item>
+        <item>HOME</item>
+        <item>END</item>
+        <item>PGUP</item>
+        <item>PGDN</item>
+        <item>F1</item><item>F2</item><item>F3</item><item>F4</item>
+        <item>F5</item><item>F6</item><item>F7</item><item>F8</item>
+        <item>F9</item><item>F10</item><item>F11</item><item>F12</item>
+    </string-array>
+
+    <string-array name="keybindTargetValues">
+        <item></item>
+        <item>ESC</item>
+        <item>TAB</item>
+        <item>ENTER</item>
+        <item>SPACE</item>
+        <item>BKSP</item>
+        <item>DEL</item>
+        <item>UP</item>
+        <item>DOWN</item>
+        <item>LEFT</item>
+        <item>RIGHT</item>
+        <item>HOME</item>
+        <item>END</item>
+        <item>PGUP</item>
+        <item>PGDN</item>
+        <item>F1</item><item>F2</item><item>F3</item><item>F4</item>
+        <item>F5</item><item>F6</item><item>F7</item><item>F8</item>
+        <item>F9</item><item>F10</item><item>F11</item><item>F12</item>
+    </string-array>
+
     <string name="pref_summary_requiresExactOrCustom">Requires "display resolution mode" to be "exact" or "custom"</string>
     <string name="pref_summary_requiresIntercepting">Requires intercepting system shortcuts with Dex mode or with Accessibility service</string>
     <string name="pref_summary_requiresTrackpadAndNative">Requires "Touchscreen input mode" to be "Trackpad" and "Display resolution mode" to be not "native"</string>

@@ -128,15 +128,39 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
 
             int scanCode = 0;
 
-            // Workaround pentru DPAD cu scancode specific
+            // Workaround for SPECIAL keys (evdev scancodes)
             switch (key) {
+                // Control/navigation
+                case "ESC":   scanCode = 1;   break;
+                case "TAB":   scanCode = 15;  break;
+                case "ENTER": scanCode = 28;  break;
+                case "BKSP":  scanCode = 14;  break;
+                case "DEL":   scanCode = 111; break;
+                case "INS":   scanCode = 110; break;
+                case "HOME":  scanCode = 102; break;
+                case "END":   scanCode = 107; break;
+                case "PGUP":  scanCode = 104; break;
+                case "PGDN":  scanCode = 109; break;
+
                 case "UP":    scanCode = 103; break;
                 case "DOWN":  scanCode = 108; break;
                 case "LEFT":  scanCode = 105; break;
                 case "RIGHT": scanCode = 106; break;
+
+                case "F1":  scanCode = 59; break;
+                case "F2":  scanCode = 60; break;
+                case "F3":  scanCode = 61; break;
+                case "F4":  scanCode = 62; break;
+                case "F5":  scanCode = 63; break;
+                case "F6":  scanCode = 64; break;
+                case "F7":  scanCode = 65; break;
+                case "F8":  scanCode = 66; break;
+                case "F9":  scanCode = 67; break;
+                case "F10": scanCode = 68; break;
+                case "F11": scanCode = 87; break;
+                case "F12": scanCode = 88; break;
             }
 
-            // Trimitere efectivă cu scancode
             mActivity.getLorieView().sendKeyEvent(scanCode, scanCode, true);
             mActivity.getLorieView().sendKeyEvent(scanCode, scanCode, false);
 
@@ -190,6 +214,10 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
 
     @SuppressLint("RtlHardcoded")
     public void onLorieExtraKeyButtonClick(View view, String key, boolean ctrlDown, boolean altDown, boolean shiftDown, boolean metaDown, boolean fnDown) {
+        if (key == null) {
+            onTerminalExtraKeyButtonClick(view, null, ctrlDown, altDown, shiftDown, metaDown, fnDown);
+            return;
+        }
         if ("KEYBOARD".equals(key))
             toggleKeyboardVisibility(mActivity);
         else if ("MAPPER".equals(key))
@@ -203,7 +231,8 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
                     context,
                     act.getLorieView(),                          // sau null dacă nu vrei deloc Lorie
                     act.getGamepadIpc(),
-                    act.getGamepadState());
+                    act.getGamepadState(),
+                    act.getGamepadHandler());
 
             PresetManager.loadPresetAndAddToUI(context, key, container, handler);
         }

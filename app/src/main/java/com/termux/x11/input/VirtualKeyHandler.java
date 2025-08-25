@@ -7,6 +7,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.util.Log;
 import android.util.SparseArray;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -16,51 +17,50 @@ import com.termux.x11.LorieView;
 import com.termux.x11.MainActivity;
 import com.termux.x11.R;
 import com.termux.x11.ipc.GamepadIpc;
+import com.termux.x11.input.GamepadInputHandler;
 
 import java.util.Arrays;
 import java.util.List;
 
 public class VirtualKeyHandler {
-    private final Context context; // Fă-l final dacă e inițializat în constructor și nu se schimbă
-    private final LorieView lorieView; // Fă-l final dacă e inițializat în constructor și nu se schimbă
-    private final GamepadIpc ipc; // Fă-l final dacă e inițializat în constructor și nu se schimbă
-    private final GamepadIpc.GamepadState gpState; // Fă-l final dacă e inițializat în constructor și nu se schimbă
+    private final Context context;
+    private final LorieView lorieView;
+    private GamepadIpc ipc;
+    private GamepadIpc.GamepadState gpState;
 
     private final SparseArray<View> activeButtons = new SparseArray<>();
-    private final GamepadInputHandler gamepadHandler; // Fă-l final dacă e inițializat în constructor și nu se schimbă
+    private GamepadInputHandler gamepadHandler;
 
     private float lastTouchX;
     private float lastTouchY;
-    private boolean isMouseTrackingActive = false; // Folosește boolean primitiv dacă null nu e o stare validă
+    private boolean isMouseTrackingActive = false;
 
     // Constructor
-    public VirtualKeyHandler(Context context, LorieView lorieView, GamepadIpc ipc, GamepadIpc.GamepadState gpState) {
+    public VirtualKeyHandler(Context context,
+                             LorieView lorieView,
+                             GamepadIpc ipc,
+                             GamepadIpc.GamepadState gpState,
+                             GamepadInputHandler gamepadHandler) {
         this.context = context;
         this.lorieView = lorieView;
         this.ipc = ipc;
         this.gpState = gpState;
+        this.gamepadHandler = gamepadHandler;
 
-        // Verificări pentru null (opțional, dar recomandat)
+
         if (this.context == null) {
             throw new IllegalArgumentException("Context cannot be null in VirtualKeyHandler");
         }
         if (this.lorieView == null) {
             Log.w("VirtualKeyHandler", "LorieView is null. Some functionalities might be affected.");
-            // Poți arunca o excepție dacă LorieView este absolut necesar de la început
             // throw new IllegalArgumentException("LorieView cannot be null");
         }
         if (this.ipc == null) {
             Log.w("VirtualKeyHandler", "IPC interface is null.");
-            // Gestionează corespunzător
         }
         if (this.gpState == null) {
             Log.w("VirtualKeyHandler", "GamepadState is null.");
-            // Gestionează corespunzător
         }
-
-        // Inițializează GamepadInputHandler cu membrii deja stocați
-        this.gamepadHandler = new GamepadInputHandler(context, lorieView, ipc, gpState,true);
-        this.gamepadHandler.setupGamepadInput();
     }
 
 
@@ -70,8 +70,8 @@ public class VirtualKeyHandler {
             String tag = (String) button.getTag();
             if (tag == null) return false;
 
-            LorieView lorieView = ((MainActivity) context).findViewById(R.id.lorieView);
-            if (lorieView == null) return false;
+            LorieView lv = this.lorieView;
+            if (lv == null) return false;
 
             int pointerId = event.getPointerId(event.getActionIndex());
             boolean isToggleable = Boolean.TRUE.equals(button.getTag(R.id.toggleable_flag));
@@ -123,42 +123,27 @@ public class VirtualKeyHandler {
                     }
 
                     if (tag.equals("Gamepad_LS") || tag.equals("Gamepad_RS")) {
-                        float centerX = v.getX() + v.getWidth() / 2f;
-                        float centerY = v.getY() + v.getHeight() / 2f;
-
-                        float dx = (event.getRawX() - centerX) / (v.getWidth() / 2f);
-                        float dy = (event.getRawY() - centerY) / (v.getHeight() / 2f);
-
+                        float dx = (event.getX() - v.getWidth()/2f)  / (v.getWidth()/2f);
+                        float dy = (event.getY() - v.getHeight()/2f) / (v.getHeight()/2f);
                         dx = Math.max(-1f, Math.min(1f, dx));
                         dy = Math.max(-1f, Math.min(1f, dy));
 
-                        int stickId = tag.contains("RS") ? 1 : 0;
+                        GamepadInputHandler.GamepadAxis axis =
+                                tag.contains("RS")
+                                        ? GamepadInputHandler.GamepadAxis.RIGHT_STICK
+                                        : GamepadInputHandler.GamepadAxis.LEFT_STICK;
 
-                        lorieView.sendGamepadEvent(0, true, dx, dy, stickId);
+                        gamepadHandler.setAxis(axis, dx, dy);
+                        return true;
                     }
                     if (tag.equals("Gamepad_LT") || tag.equals("Gamepad_RT")) {
-                        int stickId = 2;
-                        float value = 0;
+                        float value = 1f - Math.max(0f, Math.min(1f, event.getY() / v.getHeight()));
 
-                        if (event.getActionMasked() == MotionEvent.ACTION_DOWN ||
-                                event.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN ||
-                                event.getActionMasked() == MotionEvent.ACTION_MOVE) {
-
-                            float pos = event.getY() / v.getHeight();
-                            value = Math.max(0f, Math.min(1f, -pos));
-                            lorieView.sendGamepadEvent(0, true, tag.equals("Gamepad_LT") ? value : 0, tag.equals("Gamepad_RT") ? value : 0, stickId);
-                            return true;
-                        }
-
-                        if (event.getActionMasked() == MotionEvent.ACTION_UP ||
-                                event.getActionMasked() == MotionEvent.ACTION_POINTER_UP ||
-                                event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
-
-                            lorieView.sendGamepadEvent(0, false, 0, 0, stickId);
-                            return true;
-                        }
+                        float lt = tag.equals("Gamepad_LT") ? value : 0f;
+                        float rt = tag.equals("Gamepad_RT") ? value : 0f;
+                        gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, lt, rt);
+                        return true;
                     }
-
                     if (isSlideable) {
                         float x = event.getX();
                         float y = event.getY();
@@ -184,8 +169,13 @@ public class VirtualKeyHandler {
                     }
 
                     if (tag.equals("Gamepad_LS") || tag.equals("Gamepad_RS")) {
-                        int stickId = tag.contains("RS") ? 1 : 0;
-                        lorieView.sendGamepadEvent(0, false, 0, 0, stickId);
+                        GamepadInputHandler.GamepadAxis axis =
+                                tag.contains("RS")
+                                        ? GamepadInputHandler.GamepadAxis.RIGHT_STICK
+                                        : GamepadInputHandler.GamepadAxis.LEFT_STICK;
+
+                        gamepadHandler.setAxis(axis, 0f, 0f);
+                        return true;
                     }
                     if (!isToggleable || isSlideable) {
                         View pressed = activeButtons.get(pointerId);
@@ -199,7 +189,6 @@ public class VirtualKeyHandler {
             return true;
         });
     }
-
 
     private void handleButtonPress(LorieView lorieView, int pointerId, View button) {
         String tag = (String) button.getTag();
@@ -216,9 +205,9 @@ public class VirtualKeyHandler {
                 int code = getGamepadKeyCode(key);
                 int id = getGamepadButtonCode(key);
                 if (code != -1) {
-                    lorieView.sendGamepadEvent(id, true, 0,0,0);
+                    gamepadHandler.handleKeyDown(code, null);
                 } else {
-                    handleGamepadAnalogPress(key, lorieView);
+                    sendAnalogShortcut(key);
                 }
             } else if (key.startsWith("Mouse")) {
                 if (!key.equals("Mouse_Track")) {
@@ -255,9 +244,9 @@ public class VirtualKeyHandler {
                 int code = getGamepadKeyCode(key);
                 int id = getGamepadButtonCode(key);
                 if (code != -1) {
-                    lorieView.sendGamepadEvent(id, false, 0,0,0);
+                    gamepadHandler.handleKeyUp(code, null);
                 } else {
-                    handleGamepadAnalogRelease(key, lorieView);
+                    releaseAnalogShortcut(key);
                 }
             } else if (key.startsWith("Mouse")) {
                 if (!key.equals("Mouse_Track")) {
@@ -269,9 +258,9 @@ public class VirtualKeyHandler {
 
             }
             if (key.equals("Gamepad_LT")) {
-                lorieView.sendGamepadEvent(0, false, 0, 0, 2);
+                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, 0f, 0f);
             } else if (key.equals("Gamepad_RT")) {
-                lorieView.sendGamepadEvent(0, false, 0, 0, 2);
+                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, 0f, 0f);
             }
             else {
                 int code = getKeyEventCode(key);
@@ -329,67 +318,70 @@ public class VirtualKeyHandler {
     }
 
 
-    private int handleGamepadAnalogPress(String key, LorieView lorie) {
+    private void sendAnalogShortcut(String key) {
         switch (key) {
-            case "Gamepad_LS_Left": lorie.sendGamepadEvent(0, false, -1,0,0); return -1;
-            case "Gamepad_LS_Right": lorie.sendGamepadEvent(0, false, 1,0,0); return -1;
-            case "Gamepad_LS_UP": lorie.sendGamepadEvent(0, false, 0,1,0); return -1;
-            case "Gamepad_LS_Down": lorie.sendGamepadEvent(0, false, 0,-1,0); return -1;
-            case "Gamepad_RS_Left": lorie.sendGamepadEvent(0, false, -1,0,1); return -1;
-            case "Gamepad_RS_Right": lorie.sendGamepadEvent(0, false, 1,0,1); return -1;
-            case "Gamepad_RS_Up": lorie.sendGamepadEvent(0, false, 0,1,1); return -1;
-            case "Gamepad_RS_Down": lorie.sendGamepadEvent(0, false, 0,-1,1); return -1;
-            case "Gamepad_LT_Max": lorie.sendGamepadEvent(0, false, 1,0,2); return -1;
-            case "Gamepad_RT_Max": lorie.sendGamepadEvent(0, false, 0,1,2); return -1;
-            case "Gamepad_DPad_Left": lorie.sendGamepadEvent(0, false, -1,0,3); return -1;
-            case "Gamepad_DPad_Right": lorie.sendGamepadEvent(0, false, 1,0,3); return -1;
-            case "Gamepad_DPad_Up": lorie.sendGamepadEvent(0, false, 0,1,3); return -1;
-            case "Gamepad_DPad_Down": lorie.sendGamepadEvent(0, false, 0,-1,3); return -1;
-            case "Gamepad_DPad": return -1;
-            default: return -1;
+            case "Gamepad_LS_Left":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.LEFT_STICK,  -1f, 0f); break;
+            case "Gamepad_LS_Right": gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.LEFT_STICK,   1f, 0f); break;
+            case "Gamepad_LS_UP":    gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.LEFT_STICK,   0f, 1f); break;
+            case "Gamepad_LS_Down":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.LEFT_STICK,   0f,-1f); break;
+
+            case "Gamepad_RS_Left":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.RIGHT_STICK, -1f, 0f); break;
+            case "Gamepad_RS_Right": gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.RIGHT_STICK,  1f, 0f); break;
+            case "Gamepad_RS_Up":    gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.RIGHT_STICK,  0f, 1f); break;
+            case "Gamepad_RS_Down":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.RIGHT_STICK,  0f,-1f); break;
+
+            case "Gamepad_LT_Max":   gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, 1f, 0f); break;
+            case "Gamepad_RT_Max":   gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, 0f, 1f); break;
+
+            case "Gamepad_DPad_Left":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.DPAD, -1f, 0f); break;
+            case "Gamepad_DPad_Right": gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.DPAD,  1f, 0f); break;
+            case "Gamepad_DPad_Up":    gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.DPAD,  0f, 1f); break;
+            case "Gamepad_DPad_Down":  gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.DPAD,  0f,-1f); break;
         }
     }
 
-    private int handleGamepadAnalogRelease(String key, LorieView lorie) {
+    private void releaseAnalogShortcut(String key) {
+        if (gamepadHandler == null) return;
         switch (key) {
             case "Gamepad_LS_Left":
             case "Gamepad_LS_Right":
             case "Gamepad_LS_UP":
             case "Gamepad_LS_Down":
-                lorie.sendGamepadEvent(0, false, 0, 0, 0); return -1;
+                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.LEFT_STICK, 0f, 0f);
+                break;
 
             case "Gamepad_RS_Left":
             case "Gamepad_RS_Right":
             case "Gamepad_RS_Up":
             case "Gamepad_RS_Down":
-                lorie.sendGamepadEvent(0, false, 0, 0, 1); return -1;
+                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.RIGHT_STICK, 0f, 0f);
+                break;
 
             case "Gamepad_LT_Max":
             case "Gamepad_RT_Max":
-                lorie.sendGamepadEvent(0, false, 0, 0, 2); return -1;
+                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.TRIGGERS, 0f, 0f);
+                break;
 
             case "Gamepad_DPad_Left":
             case "Gamepad_DPad_Right":
             case "Gamepad_DPad_Up":
             case "Gamepad_DPad_Down":
-                lorie.sendGamepadEvent(0, false, 0, 0, 3); return -1;
-
-            default: return -1;
+                gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.DPAD, 0f, 0f);
+                break;
         }
     }
 
     private int getGamepadKeyCode(String key) {
         switch (key) {
-            case "Gamepad_A": return 48;
-            case "Gamepad_B": return 49;
-            case "Gamepad_Y": return 51;
-            case "Gamepad_X": return 52;
-            case "Gamepad_LB": return 54;
-            case "Gamepad_RB": return 55;
-            case "Gamepad_Select": return 58;
-            case "Gamepad_Start": return 59;
-            case "Gamepad_Home": return 62;
-
+            case "Gamepad_A":      return KeyEvent.KEYCODE_BUTTON_A;
+            case "Gamepad_B":      return KeyEvent.KEYCODE_BUTTON_B;
+            case "Gamepad_X":      return KeyEvent.KEYCODE_BUTTON_X;
+            case "Gamepad_Y":      return KeyEvent.KEYCODE_BUTTON_Y;
+            case "Gamepad_LB":     return KeyEvent.KEYCODE_BUTTON_L1;
+            case "Gamepad_RB":     return KeyEvent.KEYCODE_BUTTON_R1;
+            case "Gamepad_Select": return KeyEvent.KEYCODE_BUTTON_SELECT; // fallback: KEYCODE_BACK
+            case "Gamepad_Start":  return KeyEvent.KEYCODE_BUTTON_START;  // fallback: KEYCODE_BUTTON_MODE
+            case "Gamepad_Home":   return KeyEvent.KEYCODE_BUTTON_MODE;
             default: return -1;
         }
     }

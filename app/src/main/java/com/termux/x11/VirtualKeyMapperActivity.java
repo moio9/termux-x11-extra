@@ -75,10 +75,12 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         // === FIX: obține instanța MainActivity și trece obiectele către VirtualKeyHandler
         MainActivity act = MainActivity.getInstance();
         VirtualKeyHandler virtualKeyHandler = new VirtualKeyHandler(
-                /* context       */ this,
-                /* lorieView     */ (act != null ? act.getLorieView() : null),
-                /* ipc           */ (act != null ? act.getGamepadIpc() : null),
-                /* gamepadState  */ (act != null ? act.getGamepadState() : new com.termux.x11.ipc.GamepadIpc.GamepadState().neutral()));
+                this,
+                act != null ? act.getLorieView()     : null,
+                act != null ? act.getGamepadIpc()    : null,
+                act != null ? act.getGamepadState()  : null,
+                act != null ? act.getGamepadHandler(): null
+        );
 
         loadPresetButton.setOnClickListener(v -> showLoadPresetDialog(buttonContainer, virtualKeyHandler));
 
