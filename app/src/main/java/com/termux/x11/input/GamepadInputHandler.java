@@ -43,6 +43,7 @@ public class GamepadInputHandler {
     private SharedPreferences sp;
     private boolean useKeybinds = false;
     private boolean keybindEnabled = true;
+
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Gamepad-TX");
         t.setPriority(Thread.NORM_PRIORITY);
@@ -97,6 +98,14 @@ public class GamepadInputHandler {
 
         this.sp = PreferenceManager.getDefaultSharedPreferences(context);
 
+        inputManager = (InputManager) context.getSystemService(Context.INPUT_SERVICE);
+
+        inputManager.registerInputDeviceListener(new InputManager.InputDeviceListener() {
+            @Override public void onInputDeviceAdded(int id)    { onDeviceChanged(id); }
+            @Override public void onInputDeviceRemoved(int id)  { if (id == vibDeviceId) vibDeviceId = -1; }
+            @Override public void onInputDeviceChanged(int id)  { onDeviceChanged(id); }
+        }, null);
+
         if (this.lorieView != null) {
             this.lorieView.setFocusableInTouchMode(true);
             this.lorieView.requestFocus();
@@ -146,6 +155,28 @@ public class GamepadInputHandler {
             case KeyEvent.KEYCODE_BUTTON_THUMBR: return BTN_R3;
         }
         return 0;
+    }
+
+    private void onDeviceChanged(int deviceId) {
+        // dacă pad-ul curent a primit ID nou, rebindează vibratorul
+        if (deviceId == lastGamepadDeviceId || lastGamepadDeviceId == -1) {
+            rebindVibratorFor(deviceId);
+        }
+    }
+
+    private void rebindVibratorFor(int deviceId) {
+        try {
+            InputDevice d = InputDevice.getDevice(deviceId);
+            if (d != null) {
+                android.os.Vibrator v = d.getVibrator();
+                if (v != null && v.hasVibrator()) {
+                    vibDeviceId = deviceId;           // <-- actualizează ținta pentru getControllerVibrator()
+                    return;
+                }
+            }
+        } catch (Throwable ignored) {}
+        // dacă noul device nu expune vib, resetează — vom pica pe fallback la telefon
+        vibDeviceId = -1;
     }
 
     private int parseKey(String v) {
@@ -262,6 +293,7 @@ public class GamepadInputHandler {
 
         // comportamentul vechi (forward/IPC)
         if (isDpadKey(keyCode)) { setDpadFromKey(keyCode, true); sendAsync(); return true; }
+        if (e != null) lastGamepadDeviceId = e.getDeviceId();
         int bit = bitForKey(keyCode);
         if (bit != 0) { state.buttons |= bit; sendAsync(); return true; }
         return false;
@@ -275,6 +307,7 @@ public class GamepadInputHandler {
 
         // comportamentul vechi (forward/IPC)
         if (isDpadKey(keyCode)) { setDpadFromKey(keyCode, false); sendAsync(); return true; }
+        if (e != null) lastGamepadDeviceId = e.getDeviceId();
         int bit = bitForKey(keyCode);
         if (bit != 0) { state.buttons &= ~bit; sendAsync(); return true; }
         return false;
@@ -293,7 +326,8 @@ public class GamepadInputHandler {
             sendGamepadAxisEvent(hx, hy, GamepadAxis.DPAD);
         }
 
-        // 2) Stick-uri + triggere doar dacă sursa e joystick/gamepad
+        if (event == null) return false;
+        lastGamepadDeviceId = event.getDeviceId();
         if ((src & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
                 || (src & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD) {
 
@@ -424,13 +458,16 @@ public class GamepadInputHandler {
     private android.os.Vibrator getControllerVibrator() {
         try {
             InputDevice d = (vibDeviceId != -1) ? InputDevice.getDevice(vibDeviceId) : null;
-            if (d == null && lastGamepadDeviceId != -1) d = InputDevice.getDevice(lastGamepadDeviceId);
+            if (d == null && lastGamepadDeviceId != -1) {
+                rebindVibratorFor(lastGamepadDeviceId);                 // <-- NEW
+                d = InputDevice.getDevice(vibDeviceId);
+            }
             if (d != null) {
                 android.os.Vibrator v = d.getVibrator();
                 if (v != null && v.hasVibrator()) return v;
             }
         } catch (Throwable ignored) {}
-        return null; // fallback pe telefon dacă vrei
+        return null;
     }
 
     private android.os.Vibrator getPhoneVibrator() {

@@ -380,6 +380,9 @@ public class MainActivity extends AppCompatActivity {
         startIpcFromCurrentConfig(lorieView);
         refreshLoadedPreset(true);
         isBooting = false;
+
+        onPreferencesChangedCallback();
+        maybeReloadGamepad(getLorieView());
     }
 
     private void readConfigFromPrefs() {
