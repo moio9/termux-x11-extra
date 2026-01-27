@@ -27,7 +27,7 @@ public class GamepadInputHandler {
     private final android.os.Handler rumbleHandler =
             new android.os.Handler(android.os.Looper.getMainLooper());
     private long rumbleEndAt = 0L;
-    private int lastAmp = 0;            // 0..255 (max(L,R) mapat)
+    private int lastAmp = 0;            // 0..255 (max(L,R) maped)
     private int lastGamepadDeviceId = -1;
     private int vibDeviceId = -1;
 
@@ -67,14 +67,6 @@ public class GamepadInputHandler {
                 case KeyEvent.KEYCODE_DPAD_LEFT:  state.dpad = 6; break;
             }
         }
-    }
-    private boolean acceptGamepadDevice(InputDevice device) {
-        if (device == null) return true;
-        int sources = device.getSources();
-        return (sources & InputDevice.SOURCE_GAMEPAD)  == InputDevice.SOURCE_GAMEPAD
-                || (sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
-                || (sources & InputDevice.SOURCE_DPAD)     == InputDevice.SOURCE_DPAD
-                || (sources & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD;
     }
     private static final int BTN_A      = 1 << 0;
     private static final int BTN_B      = 1 << 1;
