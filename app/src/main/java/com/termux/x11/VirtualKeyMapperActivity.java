@@ -39,15 +39,23 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.termux.x11.input.VirtualKeyHandler;
+import com.termux.x11.mapper.AddButtonCommand;
+import com.termux.x11.mapper.CommandManager;
+import com.termux.x11.mapper.DeleteButtonCommand;
+import com.termux.x11.mapper.MoveCommand;
+import com.termux.x11.MainActivity;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.Map;
+import java.util.HashMap;
 
 
 public class VirtualKeyMapperActivity extends AppCompatActivity {
+    private final CommandManager commandManager = new CommandManager();
     private FrameLayout buttonContainer;
     private static String SlideColor = "#FFFF99";
     private static Float offset = 120F;
@@ -67,31 +75,41 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         Button addNewKeyButton = findViewById(R.id.addNewKeyButton);
         Button savePresetButton = findViewById(R.id.savePresetButton);
         Button loadPresetButton = findViewById(R.id.loadPresetButton);
+        Button undoButton = findViewById(R.id.undoButton);
+        Button redoButton = findViewById(R.id.redoButton);
 
         addNewKeyButton.setOnClickListener(v -> addNewButton(null));
-
         savePresetButton.setOnClickListener(v -> showSavePresetDialog());
+        undoButton.setOnClickListener(v -> { commandManager.undo(); updateUndoRedoButtons(undoButton, redoButton); });
+        redoButton.setOnClickListener(v -> { commandManager.redo(); updateUndoRedoButtons(undoButton, redoButton); });
+        updateUndoRedoButtons(undoButton, redoButton);
 
-        VirtualKeyHandler virtualKeyHandler = new VirtualKeyHandler(this);
+        MainActivity act = MainActivity.getInstance();
+        VirtualKeyHandler virtualKeyHandler = new VirtualKeyHandler(
+                this,
+                act != null ? act.getLorieView()     : null,
+                act != null ? act.getGamepadIpc()    : null,
+                act != null ? act.getGamepadState()  : null,
+                act != null ? act.getGamepadHandler(): null
+        );
+
         loadPresetButton.setOnClickListener(v -> showLoadPresetDialog(buttonContainer, virtualKeyHandler));
-        SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
+
+        SharedPreferences prefs = getSharedPreferences(AppConstants.PREFS_BUTTON_PREFS, MODE_PRIVATE);
         showLoadPresetDialog(buttonContainer, virtualKeyHandler);
-        //requestWindowFeature(Window.FEATURE_NO_TITLE);
+
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
         if (getIntent().getBooleanExtra("open_load_preset", false)) {
-            VirtualKeyHandler handler = new VirtualKeyHandler(this);
-            showLoadPresetDialog(buttonContainer, handler);
+            showLoadPresetDialog(buttonContainer, virtualKeyHandler);
         }
 
-        buttonContainer = findViewById(R.id.buttonContainer);
         if (buttonContainer == null) {
-            Log.e("DEBUG", "buttonContainer NU a fost găsit!");
+            Log.e("DEBUG", "buttonContainer not found.");
         }
-        buttonContainer = findViewById(R.id.buttonContainer);
-
     }
+
 
     private void addNewButton(Button button) {
         if (button == null) {
@@ -110,7 +128,12 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         setupSelectionLogic(button);
         registerForContextMenu(button);
 
-        buttonContainer.addView(button);
+        final Button finalBtn = button;
+        AddButtonCommand cmd = new AddButtonCommand(button, buttonContainer,
+                () -> saveButtonSettings(finalBtn, offset),
+                () -> removeButtonFromStorage(finalBtn.getId()));
+        commandManager.execute(cmd);
+        updateUndoRedoUI();
     }
 
 
@@ -134,6 +157,8 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         view.setOnTouchListener(new View.OnTouchListener() {
             private float startX, startY;
             private boolean isDragging = false;
+            private final Map<Button, Float> initialX = new HashMap<>();
+            private final Map<Button, Float> initialY = new HashMap<>();
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -142,18 +167,24 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                         startX = event.getRawX();
                         startY = event.getRawY();
                         isDragging = false;
-                        return false; // Allow other events
+                        initialX.clear();
+                        initialY.clear();
+                        if (selectedButtons.contains(v)) {
+                            for(Button btn : selectedButtons) {
+                                initialX.put(btn, btn.getX());
+                                initialY.put(btn, btn.getY());
+                            }
+                        }
+                        return false;
 
                     case MotionEvent.ACTION_MOVE:
                         if (isDragging) {
-                            // Continue existing drag
                             float deltaX = event.getRawX() - startX;
                             float deltaY = event.getRawY() - startY;
 
                             for (Button btn : selectedButtons) {
                                 btn.setX(btn.getX() + deltaX);
                                 btn.setY(btn.getY() + deltaY);
-                                saveButtonSettings(btn, offset);
                             }
 
                             startX = event.getRawX();
@@ -161,17 +192,25 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                             return true;
                         }
                         else if (isDragThresholdExceeded(event)) {
-                            // Start new drag
-                            isDragging = true;
-                            v.cancelLongPress(); // Cancel potential long-press
-                            return true;
+                             if (selectedButtons.contains(v)) {
+                                isDragging = true;
+                                v.cancelLongPress();
+                                return true;
+                             }
                         }
                         return false;
 
                     case MotionEvent.ACTION_UP:
                         if (isDragging) {
                             isDragging = false;
-                            return true; // Consume event
+                            if (!initialX.isEmpty()) {
+                                MoveCommand cmd = new MoveCommand(new ArrayList<>(selectedButtons), initialX, initialY, () -> {
+                                    for(Button btn : selectedButtons) saveButtonSettings(btn, offset);
+                                });
+                                commandManager.execute(cmd);
+                                updateUndoRedoUI();
+                            }
+                            return true;
                         }
                         return false;
                 }
@@ -207,7 +246,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     }
 
     private int generateUniqueButtonId() {
-        SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
+        SharedPreferences prefs = getSharedPreferences(AppConstants.PREFS_BUTTON_PREFS, MODE_PRIVATE);
         int lastUsedId = prefs.getInt("lastUsedId", 0);
         int newId = lastUsedId + 1;
 
@@ -221,7 +260,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         return saveButtonSettings(button, 0F);
     }
     private String saveButtonSettings(Button button, Float offset) {
-        SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
+        SharedPreferences prefs = getSharedPreferences(AppConstants.PREFS_BUTTON_PREFS, MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
 
         Set<String> buttonData = new HashSet<>(prefs.getStringSet("button_data", new HashSet<>()));
@@ -246,7 +285,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         editor.putStringSet("button_data", buttonData);
         editor.apply();
 
-        Log.d("DEBUG", "Salvăm butonul: id=" + id + ", tag=" + tag + ", text=" + text);
         return line;
     }
 
@@ -269,11 +307,13 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     public boolean onContextItemSelected(MenuItem item) {
         if (selectedButtons != null && !selectedButtons.isEmpty()) {
             if (item.getItemId() == R.id.action_delete) {
-                for (Button button : selectedButtons) {
-                    buttonContainer.removeView(button);
-                    removeButtonFromStorage(button.getId());
-                }
+                List<Button> toDelete = new ArrayList<>(selectedButtons);
+                DeleteButtonCommand cmd = new DeleteButtonCommand(toDelete, buttonContainer,
+                        () -> { for(Button b : toDelete) saveButtonSettings(b, offset); },
+                        () -> { for(Button b : toDelete) removeButtonFromStorage(b.getId()); });
+                commandManager.execute(cmd);
                 selectedButtons.clear();
+                updateUndoRedoUI();
                 return true;
 
             } else if (item.getItemId() == R.id.action_transparency) {
@@ -362,24 +402,21 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         for (Button originalButton : buttons) {
             Button copiedButton = new Button(this);
 
-            int newId = generateUniqueButtonId(); // ID unic
+            int newId = generateUniqueButtonId();
             copiedButton.setId(newId);
             copiedButton.setText(originalButton.getText() + " (Copy)");
-            copiedButton.setX(originalButton.getX() + 50); // Offset poziție
+            copiedButton.setX(originalButton.getX() + 50);
             copiedButton.setY(originalButton.getY() + 50);
             copiedButton.setTag(originalButton.getTag());
 
-            // Copiază dimensiunile exacte
             FrameLayout.LayoutParams originalParams = (FrameLayout.LayoutParams) originalButton.getLayoutParams();
             FrameLayout.LayoutParams newParams = new FrameLayout.LayoutParams(originalParams.width, originalParams.height);
             copiedButton.setLayoutParams(newParams);
 
-            // Copiază background (shape + alpha)
             if (originalButton.getBackground() != null) {
                 copiedButton.setBackground(originalButton.getBackground().getConstantState().newDrawable().mutate());
                 copiedButton.getBackground().setAlpha(originalButton.getBackground().getAlpha());
 
-                // Dacă e slideable, copiem și colorFilter + tag
                 Object isSlideable = originalButton.getTag(R.id.slideable_flag);
                 if (Boolean.TRUE.equals(isSlideable)) {
                     copiedButton.setTag(R.id.slideable_flag, true);
@@ -392,24 +429,21 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                 }
             }
 
-            // Activăm drag & meniul contextual
             enableDrag(copiedButton);
             setupSelectionLogic(copiedButton);
             registerForContextMenu(copiedButton);
 
-            // Adăugăm în UI
             buttonContainer.addView(copiedButton);
 
-            // Salvăm în preferințe
             saveButtonSettings(copiedButton, offset);
         }
-        Toast.makeText(this, "✅ Button(s) copied!", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Button(s) copied.", Toast.LENGTH_SHORT).show();
     }
 
 
 
     private void removeButtonFromStorage(int buttonId) {
-        SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
+        SharedPreferences prefs = getSharedPreferences(AppConstants.PREFS_BUTTON_PREFS, MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
 
         Set<String> buttonData = new HashSet<>(prefs.getStringSet("button_data", new HashSet<>()));
@@ -491,28 +525,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
             }
         });
 
-        widthSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (lockRatioCheckBox.isChecked()) {
-                    float ratio = buttons.get(0).getHeight() / (float) buttons.get(0).getWidth();
-                    heightSeekBar.setProgress(Math.round(progress * ratio));
-                }
-            }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
-        });
-
-        heightSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (lockRatioCheckBox.isChecked()) {
-                    float ratio = buttons.get(0).getWidth() / (float) buttons.get(0).getHeight();
-                    widthSeekBar.setProgress(Math.round(progress * ratio));
-                }
-            }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
-        });
-
         builder.show();
     }
 
@@ -549,7 +561,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
         EditText input = new EditText(this);
         input.setHint("New name for selected");
-        // Dacă e doar unul selectat, populăm cu numele curent
         if (buttons.size() == 1) input.setText(buttons.get(0).getText().toString());
         builder.setView(input);
 
@@ -570,7 +581,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
 
     private void savePreset(String presetKey) {
-        SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
+        SharedPreferences prefs = getSharedPreferences(AppConstants.PREFS_BUTTON_PREFS, MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
 
         if (buttonContainer == null) {
@@ -589,7 +600,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
         String displayId = getDisplayId(buttonContainer.getContext());
         editor.putStringSet(presetKey, buttonData);
-        editor.putString("last_used_preset_" + displayId, presetKey);
+        editor.putString(AppConstants.PREFS_LAST_USED_PRESET_PREFIX + displayId, presetKey);
         editor.apply();
 
         MainActivity instance = MainActivity.getInstance();
@@ -597,12 +608,12 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
             instance.refreshLoadedPreset(true);
         }
 
-        Toast.makeText(this, "✅ Preset saved: " + presetKey.replace("preset_", ""), Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Preset saved: " + presetKey.replace(AppConstants.PRESET_PREFIX, ""), Toast.LENGTH_SHORT).show();
     }
 
 
     public void showLoadPresetDialog(FrameLayout mainContainer, VirtualKeyHandler virtualKeyHandler) {
-        SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
+        SharedPreferences prefs = getSharedPreferences(AppConstants.PREFS_BUTTON_PREFS, MODE_PRIVATE);
         ensureEmptyPresetExists(prefs);
 
         String displayId = getDisplayId(buttonContainer.getContext());
@@ -621,7 +632,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         listView.setAdapter(adapter);
 
         listView.setOnItemClickListener((parent, view, position, id) -> {
-            String selectedPreset = "preset_" + presetNames.get(position);
+            String selectedPreset = AppConstants.PRESET_PREFIX + presetNames.get(position);
             List<Button> buttons = loadPreset(this, selectedPreset, mainContainer, -offset);
 
             for (Button btn : buttons) {
@@ -630,18 +641,18 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                 registerForContextMenu(btn);
             }
 
-            prefs.edit().putString("last_used_preset_" + displayId, selectedPreset).apply();
+            prefs.edit().putString(AppConstants.PREFS_LAST_USED_PRESET_PREFIX + displayId, selectedPreset).apply();
 
             MainActivity instance = MainActivity.getInstance();
             if (instance != null) {
                 instance.refreshLoadedPreset(true);
             }
 
-            Toast.makeText(this, "✅ Preset loaded: " + presetNames.get(position), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Preset loaded: " + presetNames.get(position), Toast.LENGTH_SHORT).show();
         });
 
         listView.setOnItemLongClickListener((parent, view, position, id) -> {
-            String selectedPreset = "preset_" + presetNames.get(position);
+            String selectedPreset = AppConstants.PRESET_PREFIX + presetNames.get(position);
             showPresetOptionsDialog(selectedPreset, mainContainer, virtualKeyHandler, adapter, presetNames);
             return true;
         });
@@ -653,26 +664,21 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     }
 
 
-    /**
-     * Funcție pentru a extrage preseturile disponibile
-     */
     public static List<String> getPresetNames(SharedPreferences prefs) {
         Set<String> presetKeys = prefs.getAll().keySet();
         List<String> presetNames = new ArrayList<>();
 
         for (String key : presetKeys) {
-            if (key.startsWith("preset_")) {
-                presetNames.add(key.replace("preset_", ""));
+            if (key.startsWith(AppConstants.PRESET_PREFIX)) {
+                presetNames.add(key.replace(AppConstants.PRESET_PREFIX, ""));
             }
         }
         return presetNames;
     }
 
-    /**
-     * Afișează opțiuni pentru un preset (Load, Rename, Delete) și actualizează lista în timp real
-     */
+
     private void showPresetOptionsDialog(String presetKey, FrameLayout mainContainer, VirtualKeyHandler virtualKeyHandler, ArrayAdapter<String> adapter, List<String> presetNames) {
-        String presetName = presetKey.replace("preset_", "");
+        String presetName = presetKey.replace(AppConstants.PRESET_PREFIX, "");
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Preset: " + presetName)
@@ -680,7 +686,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                     switch (which) {
                         case 0: // Load
                             loadPreset(this, presetKey, mainContainer);
-                            Toast.makeText(this, "✅ Preset loaded: " + presetName, Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, "Preset loaded: " + presetName, Toast.LENGTH_SHORT).show();
                             break;
 
                         case 1: // Rename
@@ -705,28 +711,27 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         builder.setTitle("Rename Preset");
 
         final EditText input = new EditText(this);
-        input.setText(oldPresetKey.replace("preset_", ""));
+        input.setText(oldPresetKey.replace(AppConstants.PRESET_PREFIX, ""));
         builder.setView(input);
 
         builder.setPositiveButton("Rename", (dialog, which) -> {
             String newPresetName = input.getText().toString().trim();
             if (!newPresetName.isEmpty()) {
-                SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
+                SharedPreferences prefs = getSharedPreferences(AppConstants.PREFS_BUTTON_PREFS, MODE_PRIVATE);
                 SharedPreferences.Editor editor = prefs.edit();
 
                 Set<String> oldData = prefs.getStringSet(oldPresetKey, new HashSet<>());
-                String newPresetKey = "preset_" + newPresetName;
+                String newPresetKey = AppConstants.PRESET_PREFIX + newPresetName;
 
                 editor.putStringSet(newPresetKey, oldData);
                 editor.remove(oldPresetKey);
                 editor.apply();
 
-                // 🔄 Actualizează lista în timp real
-                presetNames.remove(oldPresetKey.replace("preset_", ""));
+                presetNames.remove(oldPresetKey.replace(AppConstants.PRESET_PREFIX, ""));
                 presetNames.add(newPresetName);
                 adapter.notifyDataSetChanged();
 
-                Toast.makeText(this, "✅ Preset renamed!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Preset renamed.", Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -744,15 +749,15 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         builder.setMessage("Are you sure you want to delete this preset?");
 
         builder.setPositiveButton("Delete", (dialog, which) -> {
-            SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
+            SharedPreferences prefs = getSharedPreferences(AppConstants.PREFS_BUTTON_PREFS, MODE_PRIVATE);
             SharedPreferences.Editor editor = prefs.edit();
             editor.remove(presetKey);
             editor.apply();
 
-            presetNames.remove(presetKey.replace("preset_", ""));
+            presetNames.remove(presetKey.replace(AppConstants.PRESET_PREFIX, ""));
             adapter.notifyDataSetChanged();
 
-            Toast.makeText(this, "✅ Preset deleted!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Preset deleted.", Toast.LENGTH_SHORT).show();
         });
 
         builder.setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss());
@@ -767,8 +772,10 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                 "== KEYBOARD ==", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
                 "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
                 "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+                "，", "=", "-", "[", "]", "\\", ";", "'", "/", ".",
+                "`", // backtick
                 "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
-                "Space", "Enter", "Backspace", "Tab", "Escape", "Delete", "Insert",
+                "Space", "Enter", "Backspace", "Tab", "Escape", "Delete", "Insert", "◆",
                 "Home", "End", "Page Up", "Page Down", "↑", "↓", "←", "→",
                 "Alt", "Ctrl", "Shift",
                 "== MOUSE ==", "Mouse_Left", "Mouse_Right", "Mouse_Middle", "Mouse_Track",
@@ -779,7 +786,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
                 "Gamepad_LS_Right", "Gamepad_LS_Up", "Gamepad_LS_Down",
                 "Gamepad_RS_Left", "Gamepad_RS_Right", "Gamepad_RS_Up",
                 "Gamepad_RS_Down", "Gamepad_LT_Max", "Gamepad_RT_Max",
-                "Gamepad_LS", "Gamepad_RS", "Gamepad_LT", "Gamepad_LR",
+                "Gamepad_LS", "Gamepad_RS", "Gamepad_LT", "Gamepad_RT",
                 "== MISC ==", "EMPTY"
         };
 
@@ -814,7 +821,6 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         listView.setAdapter(adapter);
         listView.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
 
-        // Poți preselecta aici dacă vrei, dar pentru multi probabil nu contează
 
         listView.setOnItemClickListener((parent, view, position, id) -> {
             String key = keys[position];
@@ -857,20 +863,20 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
     public static List<Button> loadPreset(Context context, String presetName, FrameLayout buttonContainer, Float offset) {
         if (buttonContainer == null) {
-            Log.e("ERROR", "❌ buttonContainer este NULL!");
+            Log.e("ERROR", "buttonContainer is null.");
             return new ArrayList<>();
         }
         SharedPreferences prefs = context.getSharedPreferences("button_prefs", Context.MODE_PRIVATE);
 
         String screenID = getDisplayId(context);
         if (presetName.startsWith("/") || Objects.equals(presetName, "")) {
-            presetName = prefs.getString("last_used_preset_" + screenID, "preset_empty");
+            presetName = prefs.getString(AppConstants.PREFS_LAST_USED_PRESET_PREFIX + screenID, AppConstants.PRESET_EMPTY);
         }
 
         Set<String> buttonData = prefs.getStringSet(presetName, null);
         if (buttonData == null) {
-            Log.d("DEBUG", "⚠️ Presetul '" + presetName + "' nu există! Se încarcă presetul gol.");
-            presetName = "preset_empty";
+            Log.d("DEBUG", "Preset '" + presetName + "' not found. Loading empty preset.");
+            presetName = AppConstants.PRESET_EMPTY;
             buttonData = prefs.getStringSet(presetName, new HashSet<>());
         }
 
@@ -886,7 +892,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         }
 
         List<Button> buttons = new ArrayList<>();
-        if (!presetName.equals("preset_empty")) {
+        if (!presetName.equals(AppConstants.PRESET_EMPTY)) {
             for (String data : buttonData) {
                 String[] parts = data.split(",");
                 if (parts.length < 9) continue;
@@ -934,17 +940,14 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
 
     public static void ensureEmptyPresetExists(SharedPreferences prefs) {
-        String emptyPresetName = "preset_empty";
+        String emptyPresetName = AppConstants.PRESET_EMPTY;
         Set<String> defaultPreset = prefs.getStringSet(emptyPresetName, null);
 
         if (defaultPreset == null) {
-            // Dacă presetul „empty” nu există, îl creăm
             SharedPreferences.Editor editor = prefs.edit();
 
-            // Cream un set gol de butoane
             Set<String> emptyPreset = new HashSet<>();
 
-            // Salvăm presetul gol
             editor.putStringSet("Empty", emptyPreset);
             editor.apply();
 
@@ -952,13 +955,13 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     }
 
     private void showSavePresetDialog() {
-        SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
+        SharedPreferences prefs = getSharedPreferences(AppConstants.PREFS_BUTTON_PREFS, MODE_PRIVATE);
         Set<String> presetKeys = prefs.getAll().keySet();
         List<String> presetNames = new ArrayList<>();
 
         for (String key : presetKeys) {
-            if (key.startsWith("preset_")) {
-                presetNames.add(key.replace("preset_", ""));
+            if (key.startsWith(AppConstants.PRESET_PREFIX)) {
+                presetNames.add(key.replace(AppConstants.PRESET_PREFIX, ""));
             }
         }
 
@@ -971,7 +974,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
             if (which == 0) {
                 showNewPresetDialog();
             } else {
-                String selectedPreset = "preset_" + presetNames.get(which);
+                String selectedPreset = AppConstants.PRESET_PREFIX + presetNames.get(which);
                 showSavePresetOptionsDialog(selectedPreset); // Apelezi noul dialog cu Overwrite/Merge
             }
         });
@@ -994,7 +997,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         builder.setPositiveButton("Save", (dialog, which) -> {
             String presetName = input.getText().toString().trim();
             if (!presetName.isEmpty()) {
-                String presetKey = "preset_" + presetName;
+                String presetKey = AppConstants.PRESET_PREFIX + presetName;
                 savePreset(presetKey);
             } else {
                 Toast.makeText(this, "Preset name cannot be empty!", Toast.LENGTH_SHORT).show();
@@ -1008,9 +1011,9 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
 
     private void showSavePresetOptionsDialog(String presetKey) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Save Preset: " + presetKey.replace("preset_", ""));
+        builder.setTitle("Save Preset: " + presetKey.replace(AppConstants.PRESET_PREFIX, ""));
 
-        String[] options = {"Overwrite", "Merge", "Cancel"}; // cele 3 opțiuni
+        String[] options = {"Overwrite", "Merge", "Cancel"};
 
         builder.setItems(options, (dialog, which) -> {
             switch (which) {
@@ -1030,7 +1033,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
     }
 
     private void mergePreset(String presetKey) {
-        SharedPreferences prefs = getSharedPreferences("button_prefs", MODE_PRIVATE);
+        SharedPreferences prefs = getSharedPreferences(AppConstants.PREFS_BUTTON_PREFS, MODE_PRIVATE);
         Set<String> existingData = new HashSet<>(prefs.getStringSet(presetKey, new HashSet<>()));
 
         for (int i = 0; i < buttonContainer.getChildCount(); i++) {
@@ -1038,7 +1041,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
             if (view instanceof Button) {
                 Button button = (Button) view;
                 String data = saveButtonSettings(button, offset);
-                existingData.add(data); // combină fără a elimina cele vechi
+                existingData.add(data);
             }
         }
 
@@ -1049,7 +1052,7 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
             instance.refreshLoadedPreset(true);
         }
 
-        Toast.makeText(this, "✅ Preset merged into: " + presetKey.replace("preset_", ""), Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Preset merged into: " + presetKey.replace(AppConstants.PRESET_PREFIX, ""), Toast.LENGTH_SHORT).show();
     }
 
 
@@ -1074,6 +1077,21 @@ public class VirtualKeyMapperActivity extends AppCompatActivity {
         }
 
         return displayType;
+    }
+
+    private void updateUndoRedoUI() {
+        Button undo = findViewById(R.id.undoButton);
+        Button redo = findViewById(R.id.redoButton);
+        if (undo != null && redo != null) {
+            updateUndoRedoButtons(undo, redo);
+        }
+    }
+
+    private void updateUndoRedoButtons(Button undo, Button redo) {
+        undo.setEnabled(commandManager.canUndo());
+        redo.setEnabled(commandManager.canRedo());
+        undo.setAlpha(commandManager.canUndo() ? 1.0f : 0.5f);
+        redo.setAlpha(commandManager.canRedo() ? 1.0f : 0.5f);
     }
 
 }

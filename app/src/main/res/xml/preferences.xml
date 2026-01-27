@@ -224,7 +224,6 @@
             app:defaultValue="4600"
             app:useSimpleSummaryProvider="true" />
 
-        <!-- Secțiune Key Bindings (ascunsă implicit; o faci vizibilă din cod când backend == "keys") -->
         <PreferenceCategory
             app:key="keybinds_section"
             app:title="Key Bindings"
@@ -248,7 +247,6 @@
             app:title="Enable key remapper"
             app:defaultValue="true" />
 
-        <!-- Butoane standard -->
         <ListPreference app:key="keybind_btn_a"  app:title="A"
             app:defaultValue="none"
             app:entries="@array/keybindOptionsEntries"

@@ -440,7 +440,7 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
 
                             Iterator<String> keys = allPresets.keys();
                             while (keys.hasNext()) {
-                                String key = keys.next(); // <- aici definim corect cheia
+                                String key = keys.next();
                                 JSONArray array = allPresets.getJSONArray(key);
 
                                 Set<String> set = new HashSet<>();
@@ -456,7 +456,6 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
 
                             Toast.makeText(context, "All presets imported", Toast.LENGTH_SHORT).show();
                     } else {
-                            // Presupunem preset unic
                             String presetName = "preset_imported";
                             PresetManager.importPreset(context, presetName, json);
                             context.getSharedPreferences("button_prefs", Context.MODE_PRIVATE)
@@ -466,7 +465,6 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
                             Toast.makeText(context, "Preset imported: " + presetName, Toast.LENGTH_SHORT).show();
                         }
 
-                        // Poți reîncărca presetul în UI dacă e cazul
                         MainActivity.getInstance().refreshLoadedPreset(true);
                     }
                 } catch (Exception e) {

@@ -174,16 +174,13 @@
     <string-array name="keybindOptionsEntries">
         <item>none</item>
 
-        <!-- taste de navigație / control -->
         <item>ESC</item><item>ENTER</item><item>SPACE</item><item>TAB</item>
         <item>BACKSPACE</item>
         <item>UP</item><item>DOWN</item><item>LEFT</item><item>RIGHT</item>
 
-        <!-- cifre -->
         <item>0</item><item>1</item><item>2</item><item>3</item><item>4</item>
         <item>5</item><item>6</item><item>7</item><item>8</item><item>9</item>
 
-        <!-- litere -->
         <item>A</item><item>B</item><item>C</item><item>D</item><item>E</item>
         <item>F</item><item>G</item><item>H</item><item>I</item><item>J</item>
         <item>K</item><item>L</item><item>M</item><item>N</item><item>O</item>
@@ -192,7 +189,6 @@
     </string-array>
 
     <string-array name="keybindOptionsValues">
-        <!-- le ținem identice cu entries, ca să nu stricăm generatorul -->
         <item>none</item>
 
         <item>ESC</item><item>ENTER</item><item>SPACE</item><item>TAB</item>

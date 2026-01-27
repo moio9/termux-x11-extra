@@ -6,7 +6,6 @@
     android:padding="8dp"
     android:gravity="center_vertical">
 
-    <!-- Numele tastei -->
     <TextView
         android:id="@+id/keyNameTextView"
         android:layout_width="0dp"
@@ -14,7 +13,6 @@
         android:layout_weight="1"
         android:textSize="18sp"/>
 
-    <!-- Buton de ștergere -->
     <Button
         android:id="@+id/deleteKeyButton"
         android:layout_width="wrap_content"

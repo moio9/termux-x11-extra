@@ -41,26 +41,24 @@ public class PresetManager {
         Set<String> buttonData = prefs.getStringSet(presetKey, null);
 
         if (buttonData == null) {
-            Toast.makeText(context, "⚠️ Presetul nu există: " + presetKey, Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Preset does not exist: " + presetKey, Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Convertim în JSONArray
         JSONArray jsonArray = new JSONArray();
         for (String line : buttonData) {
             jsonArray.put(line);
         }
 
-        // Salvăm într-un fișier
         File dir = new File(Environment.getExternalStorageDirectory(), "VirtualKeyPresets");
         if (!dir.exists()) dir.mkdirs();
         File file = new File(dir, presetKey + ".json");
 
         try (FileWriter writer = new FileWriter(file)) {
-            writer.write(jsonArray.toString(2)); // indentat
-            Toast.makeText(context, "✅ Exportat: " + file.getAbsolutePath(), Toast.LENGTH_LONG).show();
+            writer.write(jsonArray.toString(2));
+            Toast.makeText(context, "Exported: " + file.getAbsolutePath(), Toast.LENGTH_LONG).show();
         } catch (IOException e) {
-            Toast.makeText(context, "❌ Eroare la export: " + e, Toast.LENGTH_LONG).show();
+            Toast.makeText(context, "Export failed: " + e, Toast.LENGTH_LONG).show();
         } catch (JSONException e) {
             throw new RuntimeException(e);
         }
@@ -70,7 +68,7 @@ public class PresetManager {
     public static void importPreset(Context context, String presetKey, String filePath) {
         File file = new File(filePath);
         if (!file.exists()) {
-            Toast.makeText(context, "❌ Fișierul nu există", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "File does not exist.", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -85,9 +83,9 @@ public class PresetManager {
             SharedPreferences prefs = context.getSharedPreferences("button_prefs", Context.MODE_PRIVATE);
             prefs.edit().putStringSet(presetKey, buttonData).apply();
 
-            Toast.makeText(context, "✅ Importat presetul: " + presetKey, Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Preset imported: " + presetKey, Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Toast.makeText(context, "❌ Eroare la import: " + e, Toast.LENGTH_LONG).show();
+            Toast.makeText(context, "Import failed: " + e, Toast.LENGTH_LONG).show();
         }
     }
 
@@ -98,7 +96,6 @@ public class PresetManager {
 
         for (Map.Entry<String, ?> entry : prefs.getAll().entrySet()) {
             if (entry.getKey().startsWith("preset_") && entry.getValue() instanceof Set) {
-                // Convertim fiecare preset într-un JSONArray
                 JSONArray array = new JSONArray((Set<?>) entry.getValue());
                 try {
                     result.put(entry.getKey(), array);
@@ -123,9 +120,8 @@ public class PresetManager {
         String displayId = VirtualKeyMapperActivity.getDisplayId(context);
         prefs.edit().putString("last_used_preset_" + displayId, presetKey).apply();
 
-        Toast.makeText(context, "✅ Preset loaded: " + presetKey.replace("preset_", ""), Toast.LENGTH_SHORT).show();
+        Toast.makeText(context, "Preset loaded: " + presetKey.replace("preset_", ""), Toast.LENGTH_SHORT).show();
     }
 
 
 }
-

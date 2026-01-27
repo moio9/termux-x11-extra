@@ -4,7 +4,7 @@ import static com.termux.x11.MainActivity.prefs;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.hardware.input.InputManager; // Import necesar
+import android.hardware.input.InputManager;
 import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.util.Log;
@@ -28,11 +28,11 @@ public class GamepadInputHandler {
             new android.os.Handler(android.os.Looper.getMainLooper());
     private long rumbleEndAt = 0L;
     private int lastAmp = 0;            // 0..255 (max(L,R) mapat)
-    private int lastGamepadDeviceId = -1; // actualizat din evenimente
+    private int lastGamepadDeviceId = -1;
     private int vibDeviceId = -1;
 
     private LorieView lorieView;
-    private Context context; // Necesar pentru InputManager și VibratorManager
+    private Context context;
     private InputManager inputManager;
     private final GamepadIpc ipc;
     private final GamepadIpc.GamepadState state;
@@ -49,6 +49,9 @@ public class GamepadInputHandler {
         t.setPriority(Thread.NORM_PRIORITY);
         return t;
     });
+
+    private final GamepadIpc.GamepadState reusableState = new GamepadIpc.GamepadState();
+    private final Runnable sendRunnable;
     private boolean isDpadKey(int keyCode) {
         return keyCode == KeyEvent.KEYCODE_DPAD_UP
                 || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
@@ -56,21 +59,23 @@ public class GamepadInputHandler {
                 || keyCode == KeyEvent.KEYCODE_DPAD_LEFT;
     }
     private void setDpadFromKey(int keyCode, boolean down) {
-        if (!down) { state.dpad = 255; return; }
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP:    state.dpad = 0; break;
-            case KeyEvent.KEYCODE_DPAD_RIGHT: state.dpad = 2; break;
-            case KeyEvent.KEYCODE_DPAD_DOWN:  state.dpad = 4; break;
-            case KeyEvent.KEYCODE_DPAD_LEFT:  state.dpad = 6; break;
+        synchronized (state) {
+            if (!down) { state.dpad = 255; return; }
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_DPAD_UP:    state.dpad = 0; break;
+                case KeyEvent.KEYCODE_DPAD_RIGHT: state.dpad = 2; break;
+                case KeyEvent.KEYCODE_DPAD_DOWN:  state.dpad = 4; break;
+                case KeyEvent.KEYCODE_DPAD_LEFT:  state.dpad = 6; break;
+            }
         }
     }
     private boolean acceptGamepadDevice(InputDevice device) {
-        if (device == null) return true; // uneori Android nu populă device-ul, dar evenimentul e valid
+        if (device == null) return true;
         int sources = device.getSources();
         return (sources & InputDevice.SOURCE_GAMEPAD)  == InputDevice.SOURCE_GAMEPAD
                 || (sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
                 || (sources & InputDevice.SOURCE_DPAD)     == InputDevice.SOURCE_DPAD
-                || (sources & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD; // unele gamepaduri trimit butoane ca „tastatură”
+                || (sources & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD;
     }
     private static final int BTN_A      = 1 << 0;
     private static final int BTN_B      = 1 << 1;
@@ -83,7 +88,6 @@ public class GamepadInputHandler {
     private static final int BTN_L3     = 1 << 8;
     private static final int BTN_R3     = 1 << 9;
 
-    // Constructor actualizat pentru a primi LorieView și Context
     public GamepadInputHandler(Context context,
                                LorieView lorieView,
                                GamepadIpc ipc,
@@ -93,12 +97,24 @@ public class GamepadInputHandler {
         this.lorieView = lorieView;
         this.ipc = ipc;
         this.state = state;
+        this.sendRunnable = () -> {
+            synchronized (this.state) {
+                 reusableState.buttons = this.state.buttons;
+                 reusableState.dpad = this.state.dpad;
+                 reusableState.thumb_lx = this.state.thumb_lx;
+                 reusableState.thumb_ly = this.state.thumb_ly;
+                 reusableState.thumb_rx = this.state.thumb_rx;
+                 reusableState.thumb_ry = this.state.thumb_ry;
+                 reusableState.left_trigger = this.state.left_trigger;
+                 reusableState.right_trigger = this.state.right_trigger;
+            }
+            try { this.ipc.sendState(reusableState); }
+            catch (Throwable t) { Log.e(TAG, "sendState failed", t); }
+        };
         this.forwardToLorie = forwardToLorie;
         this.inputManager = (InputManager) context.getSystemService(Context.INPUT_SERVICE);
 
         this.sp = PreferenceManager.getDefaultSharedPreferences(context);
-
-        inputManager = (InputManager) context.getSystemService(Context.INPUT_SERVICE);
 
         inputManager.registerInputDeviceListener(new InputManager.InputDeviceListener() {
             @Override public void onInputDeviceAdded(int id)    { onDeviceChanged(id); }
@@ -122,10 +138,8 @@ public class GamepadInputHandler {
         String backend = prefs.gamepadInputType.get();
         useKeybinds = "keys".equalsIgnoreCase(backend);
 
-        // opțional: când mapăm în taste, nu mai forward-uim gamepad brut în X11
         if (useKeybinds) forwardToLorie = false;
 
-        // “Enable key remapper”
         keybindEnabled = sp.getBoolean("keybindRemapperEnabled", true);
     }
     private int bitForKey(int keyCode) {
@@ -158,7 +172,6 @@ public class GamepadInputHandler {
     }
 
     private void onDeviceChanged(int deviceId) {
-        // dacă pad-ul curent a primit ID nou, rebindează vibratorul
         if (deviceId == lastGamepadDeviceId || lastGamepadDeviceId == -1) {
             rebindVibratorFor(deviceId);
         }
@@ -170,12 +183,11 @@ public class GamepadInputHandler {
             if (d != null) {
                 android.os.Vibrator v = d.getVibrator();
                 if (v != null && v.hasVibrator()) {
-                    vibDeviceId = deviceId;           // <-- actualizează ținta pentru getControllerVibrator()
+                    vibDeviceId = deviceId;
                     return;
                 }
             }
         } catch (Throwable ignored) {}
-        // dacă noul device nu expune vib, resetează — vom pica pe fallback la telefon
         vibDeviceId = -1;
     }
 
@@ -241,24 +253,11 @@ public class GamepadInputHandler {
 
     private void sendAsync() {
         if (ipc == null) return;
-        final GamepadIpc.GamepadState snap = new GamepadIpc.GamepadState();
-        snap.buttons = state.buttons;
-        snap.dpad = state.dpad;
-        snap.thumb_lx = state.thumb_lx;
-        snap.thumb_ly = state.thumb_ly;
-        snap.thumb_rx = state.thumb_rx;
-        snap.thumb_ry = state.thumb_ry;
-        snap.left_trigger = state.left_trigger;
-        snap.right_trigger = state.right_trigger;
-
-        io.execute(() -> {
-            try { ipc.sendState(snap); }
-            catch (Throwable t) { Log.e(TAG, "sendState failed", t); }
-        });
+        io.execute(sendRunnable);
     }
 
     public void setupGamepadInput() {
-        Log.d(TAG, "🎮 GamepadInputHandler initialized.");
+        Log.d(TAG, "GamepadInputHandler initialized.");
         try {
             int[] ids = inputManager.getInputDeviceIds();
             for (int id : ids) {
@@ -291,11 +290,16 @@ public class GamepadInputHandler {
             if (out != 0) return emitMappedKey(KeyEvent.ACTION_DOWN, out);
         }
 
-        // comportamentul vechi (forward/IPC)
         if (isDpadKey(keyCode)) { setDpadFromKey(keyCode, true); sendAsync(); return true; }
         if (e != null) lastGamepadDeviceId = e.getDeviceId();
         int bit = bitForKey(keyCode);
-        if (bit != 0) { state.buttons |= bit; sendAsync(); return true; }
+        if (bit != 0) {
+            synchronized (state) {
+                state.buttons |= bit;
+            }
+            sendAsync();
+            return true;
+        }
         return false;
     }
 
@@ -305,11 +309,16 @@ public class GamepadInputHandler {
             if (out != 0) return emitMappedKey(KeyEvent.ACTION_UP, out);
         }
 
-        // comportamentul vechi (forward/IPC)
         if (isDpadKey(keyCode)) { setDpadFromKey(keyCode, false); sendAsync(); return true; }
         if (e != null) lastGamepadDeviceId = e.getDeviceId();
         int bit = bitForKey(keyCode);
-        if (bit != 0) { state.buttons &= ~bit; sendAsync(); return true; }
+        if (bit != 0) {
+            synchronized (state) {
+                state.buttons &= ~bit;
+            }
+            sendAsync();
+            return true;
+        }
         return false;
     }
 
@@ -318,11 +327,11 @@ public class GamepadInputHandler {
         final int src = event.getSource();
         final InputDevice dev = event.getDevice();
 
-        // 1) DPAD ca HAT: procesează mereu dacă există pe event (indiferent de sursă)
         float hx = event.getAxisValue(MotionEvent.AXIS_HAT_X);
         float hy = event.getAxisValue(MotionEvent.AXIS_HAT_Y);
-        // Dacă e orice mișcare sau eram într-o stare DPAD != neutru, actualizează
-        if (hx != 0f || hy != 0f || state.dpad != 255) {
+        boolean dpadActive;
+        synchronized (state) { dpadActive = state.dpad != 255; }
+        if (hx != 0f || hy != 0f || dpadActive) {
             sendGamepadAxisEvent(hx, hy, GamepadAxis.DPAD);
         }
 
@@ -336,7 +345,6 @@ public class GamepadInputHandler {
             float ly = event.getAxisValue(MotionEvent.AXIS_Y);
             sendGamepadAxisEvent(lx, ly, GamepadAxis.LEFT_STICK);
 
-            // RIGHT STICK - încearcă Z/RZ, fallback pe RX/RY
             float rx = event.getAxisValue(MotionEvent.AXIS_Z);
             float ry = event.getAxisValue(MotionEvent.AXIS_RZ);
             if (rx == 0f && ry == 0f) {
@@ -353,7 +361,6 @@ public class GamepadInputHandler {
             return true;
         }
 
-        // dacă am apucat să setăm DPAD din HAT, consideră handled
         return (hx != 0f || hy != 0f);
     }
 
@@ -361,10 +368,11 @@ public class GamepadInputHandler {
         if (forwardToLorie && lorieView != null) {
             lorieView.sendGamepadEvent(button, pressed, 0f, 0f, 0);
         }
-        // update state & trimite prin IPC
         int bit = bitForKey(button);
         if (bit != 0) {
-            if (pressed) state.buttons |= bit; else state.buttons &= ~bit;
+            synchronized (state) {
+                if (pressed) state.buttons |= bit; else state.buttons &= ~bit;
+            }
             sendAsync();
         }
         Log.d(TAG, "keyCode=" + button + " -> bit=" + bit + " pressed=" + pressed + " srcForward=" + forwardToLorie);
@@ -375,7 +383,6 @@ public class GamepadInputHandler {
         return Math.max(0, Math.min(255, b));
     }
     private static short clampAxis(float v) {
-        // v în [-1,1] -> int16
         int iv = Math.round(v * 32767f);
         if (iv < -32768) iv = -32768;
         if (iv >  32767) iv =  32767;
@@ -399,26 +406,27 @@ public class GamepadInputHandler {
         if (forwardToLorie && lorieView != null) {
             lorieView.sendGamepadEvent(0, false, axisX, axisY, axis.getId());
         }
-        // update state & trimite prin IPC
-        switch (axis) {
-            case LEFT_STICK:
-                state.thumb_lx = clampAxis(axisX);
-                state.thumb_ly = clampAxis(axisY);
-                break;
-            case RIGHT_STICK:
-                state.thumb_rx = clampAxis(axisX);
-                state.thumb_ry = clampAxis(axisY);
-                break;
-            case TRIGGERS:
-                state.left_trigger  = clampByte(axisX); // L
-                state.right_trigger = clampByte(axisY); // R
-                break;
-            case DPAD:
-                state.dpad = dpadFromHat(axisX, axisY);
-                break;
+        synchronized (state) {
+            switch (axis) {
+                case LEFT_STICK:
+                    state.thumb_lx = clampAxis(axisX);
+                    state.thumb_ly = clampAxis(axisY);
+                    break;
+                case RIGHT_STICK:
+                    state.thumb_rx = clampAxis(axisX);
+                    state.thumb_ry = clampAxis(axisY);
+                    break;
+                case TRIGGERS:
+                    state.left_trigger  = clampByte(axisX); // L
+                    state.right_trigger = clampByte(axisY); // R
+                    break;
+                case DPAD:
+                    state.dpad = dpadFromHat(axisX, axisY);
+                    break;
+            }
         }
         if (ipc != null) sendAsync();
-        Log.d(TAG, "🎮 Axis event for " + axis.name() + " -> X: " + axisX + ", Y: " + axisY);
+        Log.d(TAG, "Axis event for " + axis.name() + " -> X: " + axisX + ", Y: " + axisY);
     }
 
     public void rumble(int left, int right, int durationMs) {
@@ -435,7 +443,6 @@ public class GamepadInputHandler {
         android.os.Vibrator devVib = tgtDev ? getControllerVibrator() : null;
         android.os.Vibrator phVib  = tgtPhone ? getPhoneVibrator() : null;
 
-        // pornește vibrația
         if (android.os.Build.VERSION.SDK_INT >= 26) {
             VibrationEffect eff = VibrationEffect.createOneShot(
                     Math.max(10, durationMs),
@@ -448,18 +455,17 @@ public class GamepadInputHandler {
             if (phVib  != null && phVib.hasVibrator())  phVib.vibrate(Math.max(10, durationMs));
         }
 
-        // PROGRAMEAZĂ anularea corect
         lastAmp = amp;
-        rumbleEndAt = android.os.SystemClock.uptimeMillis() + durationMs; // baza corectă pt Handler
+        rumbleEndAt = android.os.SystemClock.uptimeMillis() + durationMs;
         rumbleHandler.removeCallbacks(cancelRunnable);
-        rumbleHandler.postDelayed(cancelRunnable, durationMs); // simplu și corect
+        rumbleHandler.postDelayed(cancelRunnable, durationMs);
     }
 
     private android.os.Vibrator getControllerVibrator() {
         try {
             InputDevice d = (vibDeviceId != -1) ? InputDevice.getDevice(vibDeviceId) : null;
             if (d == null && lastGamepadDeviceId != -1) {
-                rebindVibratorFor(lastGamepadDeviceId);                 // <-- NEW
+                rebindVibratorFor(lastGamepadDeviceId);
                 d = InputDevice.getDevice(vibDeviceId);
             }
             if (d != null) {
@@ -502,7 +508,6 @@ public class GamepadInputHandler {
     }
 
 
-    // Enum pentru Axis IDs pentru lizibilitate
     public enum GamepadAxis {
         LEFT_STICK(0),
         RIGHT_STICK(1),

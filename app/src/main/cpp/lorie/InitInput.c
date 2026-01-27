@@ -289,7 +289,7 @@ static int lorieGamepadProc(DeviceIntPtr device, int what) {
 
 
 #define NBUTTONS 16
-#define NAXES 8  // Stick-uri + triggere + dpad
+#define NAXES 8
 
     BYTE map[NBUTTONS + 1] = {0};
     Atom btn_labels[NBUTTONS] = {0};
@@ -304,8 +304,8 @@ static int lorieGamepadProc(DeviceIntPtr device, int what) {
             for (i = 1; i <= NBUTTONS; i++)
                 map[i] = i;
 
-            axes_labels[0] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_X);  // Stick Stânga X
-            axes_labels[1] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_Y);  // Stick Stânga Y
+            axes_labels[0] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_X);
+            axes_labels[1] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_Y);
 
 
             btn_labels[0] = XIGetKnownProperty(BTN_LABEL_PROP_BTN_0);  // A
@@ -376,7 +376,7 @@ void InitInput(__unused int argc, __unused char *argv[]) {
     lorieGamepad = AddInputDevice(serverClient, lorieGamepadProc, TRUE);
 
     if (!lorieMouse || !lorieTouch || !lorieKeyboard || !lorieGamepad) {
-        __android_log_print(ANDROID_LOG_ERROR, "LorieNative", "Eroare la inițializarea dispozitivelor de input!");
+        __android_log_print(ANDROID_LOG_ERROR, "LorieNative", "Failed to initialize input devices.");
         return;
     }
 

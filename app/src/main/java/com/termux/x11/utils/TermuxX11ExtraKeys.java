@@ -222,14 +222,14 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
             toggleKeyboardVisibility(mActivity);
         else if ("MAPPER".equals(key))
             mActivity.startActivity(new Intent(mActivity, VirtualKeyMapperActivity.class) {{ setAction(ACTION_START_MAPPER_ACTIVITY); }});
-        else if (key.startsWith("preset_")) {
+        else if (key.startsWith(com.termux.x11.AppConstants.PRESET_PREFIX)) {
             Context context = getInstance();
             Activity activity = (Activity) context;
             FrameLayout container = activity.findViewById(R.id.top);
             MainActivity act = (MainActivity) activity;
             VirtualKeyHandler handler = new VirtualKeyHandler(
                     context,
-                    act.getLorieView(),                          // sau null dacă nu vrei deloc Lorie
+                    act.getLorieView(),
                     act.getGamepadIpc(),
                     act.getGamepadState(),
                     act.getGamepadHandler());

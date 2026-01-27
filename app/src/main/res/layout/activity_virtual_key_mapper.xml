@@ -13,6 +13,26 @@
         android:text="Add New Key" />
 
     <Button
+        android:id="@+id/undoButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_toStartOf="@id/addNewKeyButton"
+        android:layout_marginEnd="10dp"
+        android:text="Undo"
+        android:backgroundTint="#888888" />
+
+    <Button
+        android:id="@+id/redoButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_toEndOf="@id/addNewKeyButton"
+        android:layout_marginStart="10dp"
+        android:text="Redo"
+        android:backgroundTint="#888888" />
+
+    <Button
         android:id="@+id/savePresetButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

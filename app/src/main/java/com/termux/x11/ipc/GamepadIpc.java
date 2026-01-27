@@ -25,15 +25,15 @@ public class GamepadIpc implements Runnable {
     public enum HandshakeFormat { NEW, LEGACY, BOTH, NONE }
     private final Object peerLock = new Object();
     private final java.util.HashSet<SocketAddress> peers       = new java.util.HashSet<SocketAddress>();
-    private final java.util.HashSet<SocketAddress> xinputPeers = new java.util.HashSet<SocketAddress>(); // subset din peers
+    private final java.util.HashSet<SocketAddress> xinputPeers = new java.util.HashSet<SocketAddress>();
 
 
     // Config
-    private final String bindHost;   // ex: "127.0.0.1"
-    private final int clientPort;    // unde ascultă Android (DLL-urile trimit aici)
-    private final int serverPort;    // (nefolosit direct aici, dar îl păstrăm dacă vrei să ai un fallback)
+    private final String bindHost;
+    private final int clientPort;
+    private final int serverPort;
     private InetSocketAddress serverAddr;
-    private final int gamepadId;     // ex: 1
+    private final int gamepadId;
     private volatile int pumpHz = 125;
     private volatile String currentName = "Termux-X12 Pad";
     private final HandshakeFormat hsFormat;
@@ -65,7 +65,7 @@ public class GamepadIpc implements Runnable {
         this.bindHost   = host;
         this.clientPort = cli;
         this.serverPort = srv;
-        this.gamepadId  = id;                       // <- corect, nu hardcodat 1
+        this.gamepadId  = id;
         this.listener   = listener;
         this.hsFormat   = (fmt != null ? fmt : HandshakeFormat.BOTH);
     }
@@ -76,10 +76,10 @@ public class GamepadIpc implements Runnable {
         running.set(true);
         try {
             txSocket   = new DatagramSocket();
-            serverAddr = new InetSocketAddress(bindHost, serverPort);       // dacă vrei să trimiți și “direct”
+            serverAddr = new InetSocketAddress(bindHost, serverPort);
             rxSocket   = new DatagramSocket(null);
             rxSocket.setReuseAddress(true);
-            rxSocket.bind(new InetSocketAddress(bindHost, clientPort));      // <- ascultăm aici
+            rxSocket.bind(new InetSocketAddress(bindHost, clientPort));
         } catch (Exception e) {
             log("socket init error: " + e);
             stop();
@@ -106,8 +106,6 @@ public class GamepadIpc implements Runnable {
 
     }
 
-    public void updateState(GamepadState s) { lastState = s; }
-
     @Override public void run() {
         final byte[] buf = new byte[64];
         final DatagramPacket pkt = new DatagramPacket(buf, buf.length);
@@ -119,14 +117,11 @@ public class GamepadIpc implements Runnable {
 
                 final int code = buf[0] & 0xFF;
 
-                // Dacă handshake-ul e oprit, ignoră total HELLO/GET_GAMEPAD
                 if (hsFormat == HandshakeFormat.NONE) {
                     if (code == 1 /*HELLO*/ || code == CODE_GET_GAMEPAD) {
-                        // nu adăuga peers, nu porni pump
                         log("handshake NONE: ignoring code=" + code);
                         continue;
                     }
-                    // poți lăsa RUMBLE/RELEASE să treacă sau să le ignori, la alegere
                 }
 
                 if (code == 1) { // HELLO XInput
@@ -161,7 +156,6 @@ public class GamepadIpc implements Runnable {
                                 sent = true; break;
                             case NONE:
                             default:
-                                // nu răspunde
                                 break;
                         }
                     } catch (IOException ex) { log("handshake send error: " + ex); }
@@ -201,32 +195,6 @@ public class GamepadIpc implements Runnable {
         }
     }
 
-    // transmit
-    private void sendGetGamepadReply(int ignoredFlags, HandshakeFormat fmt, SocketAddress dst) throws IOException {
-        switch (fmt) {
-            case NEW: {
-                int flags = FLAG_INPUT_TYPE_XINPUT;
-                sendXInput(flags, dst);
-                break;
-            }
-            case LEGACY: {
-                int flags = FLAG_INPUT_TYPE_DINPUT | FLAG_DINPUT_MAPPER_XINPUT;
-                sendDInput(flags, dst);
-                break;
-            }
-            case BOTH: {
-                // Trimite ambele, în ordine XInput apoi DInput.
-                // Fiecare cu flag-urile potrivite formatului.
-                sendXInput(FLAG_INPUT_TYPE_XINPUT, dst);
-                sendDInput(FLAG_INPUT_TYPE_DINPUT | FLAG_DINPUT_MAPPER_XINPUT, dst);
-                break;
-            }
-            case NONE:
-            default:
-                // nu trimite nimic
-                break;
-        }
-    }
     // XInput: [0]=8, [1]=1, *(+2)=id, [6]=flags, name NUL @ +7..
     private void sendXInput(int flags, SocketAddress dst) throws IOException {
         byte[] buf = new byte[64];
@@ -259,7 +227,6 @@ public class GamepadIpc implements Runnable {
         bb.put(5, (byte) (flags & 0xFF));
 
         String name = currentName != null ? currentName : "Termux-X11 Pad";
-// LEGACY: max 53 bytes pt nume
         String safe = utf8SafeTruncate(name, 53);
         byte[] nb = safe.getBytes(StandardCharsets.UTF_8);
         int len = nb.length;
@@ -298,7 +265,7 @@ public class GamepadIpc implements Runnable {
         }
     }
 
-    /** Trimite RELEASE către toți peers. */
+    /** Send RELEASE to all peers. */
     public void sendRelease() {
         try (DatagramSocket tx = new DatagramSocket()) {
             byte[] buf = new byte[64]; buf[0] = (byte) CODE_RELEASE_GAMEPAD;
@@ -331,13 +298,13 @@ public class GamepadIpc implements Runnable {
         byte[] b = s.getBytes(StandardCharsets.UTF_8);
         if (b.length <= maxBytes) return s;
         int end = maxBytes;
-        // verifică ultimul BYTE inclus (end-1), nu end
+        // Check the last included byte (end - 1), not end.
         while (end > 0 && (b[end - 1] & 0b1100_0000) == 0b1000_0000) end--;
         if (end <= 0) end = maxBytes; // fallback
         return new String(b, 0, end, StandardCharsets.UTF_8);
     }
 
-    // Stare
+    // State
     public static class GamepadState {
         public int buttons;
         public int dpad = 255;
