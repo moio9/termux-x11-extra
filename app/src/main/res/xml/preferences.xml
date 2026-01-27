@@ -227,7 +227,7 @@
         <PreferenceCategory
             app:key="keybinds_section"
             app:title="Key Bindings"
-            app:isPreferenceVisible="false">
+            app:isPreferenceVisible="true">
 
             <Preference
                 app:key="keybinds_open"
@@ -241,11 +241,6 @@
     <PreferenceScreen
         app:key="keybind_mapper_fragment"
         app:title="Key Bind Mapper">
-
-        <SwitchPreferenceCompat
-            app:key="keybindRemapperEnabled"
-            app:title="Enable key remapper"
-            app:defaultValue="true" />
 
         <ListPreference app:key="keybind_btn_a"  app:title="A"
             app:defaultValue="none"

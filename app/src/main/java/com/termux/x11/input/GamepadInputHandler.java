@@ -42,7 +42,6 @@ public class GamepadInputHandler {
     private int vibrateStrength = 255;
     private SharedPreferences sp;
     private boolean useKeybinds = false;
-    private boolean keybindEnabled = true;
 
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Gamepad-TX");
@@ -139,8 +138,6 @@ public class GamepadInputHandler {
         useKeybinds = "keys".equalsIgnoreCase(backend);
 
         if (useKeybinds) forwardToLorie = false;
-
-        keybindEnabled = sp.getBoolean("keybindRemapperEnabled", true);
     }
     private int bitForKey(int keyCode) {
         switch (keyCode) {
@@ -285,7 +282,7 @@ public class GamepadInputHandler {
     }
 
     public boolean handleKeyDown(int keyCode, KeyEvent e) {
-        if (useKeybinds && keybindEnabled) {
+        if (useKeybinds) {
             int out = mapForGamepadKeycode(keyCode);
             if (out != 0) return emitMappedKey(KeyEvent.ACTION_DOWN, out);
         }
@@ -304,7 +301,7 @@ public class GamepadInputHandler {
     }
 
     public boolean handleKeyUp(int keyCode, KeyEvent e) {
-        if (useKeybinds && keybindEnabled) {
+        if (useKeybinds) {
             int out = mapForGamepadKeycode(keyCode);
             if (out != 0) return emitMappedKey(KeyEvent.ACTION_UP, out);
         }
