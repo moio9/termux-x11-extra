@@ -33,6 +33,9 @@ void lorieHandleClipboardAnnounce(void);
 void lorieHandleClipboardData(const char* data);
 void lorieSetStylusEnabled(Bool enabled);
 void lorieSyncLockKeysState(uint8_t state);
+void LorieControllerExtensionInit(void);
+void lorieSetControllerRumble(uint8_t effect, uint16_t low, uint16_t high,
+                              uint32_t durationMs);
 void lorieWakeServer(void);
 void lorieRecheckGpuCopies(void);
 void lorieChoreographerFrameCallback(__unused long t, AChoreographer* d);
@@ -109,6 +112,7 @@ typedef enum {
     EVENT_RENDERER_WAKEUP_COND,
     EVENT_GPU_COPY_DONE,
     EVENT_LOCK_KEYS_STATE,
+    EVENT_GAMEPAD_RUMBLE,
 } eventType;
 
 typedef union {
@@ -161,6 +165,13 @@ typedef union {
         int16_t axisY;
         uint8_t axisID;
     } gamepad;
+    struct {
+        uint8_t t;
+        uint8_t effect;
+        uint16_t low;
+        uint16_t high;
+        uint32_t durationMs;
+    } gamepadRumble;
     struct {
         uint8_t t;
         uint32_t code;

@@ -284,6 +284,7 @@ add_library(Xlorie SHARED
         "lorie/clipboard.c"
         "lorie/InitOutput.c"
         "lorie/InitInput.c"
+        "lorie/LorieController.c"
         "lorie/InputXKB.c"
         "lorie/renderer.cpp"
         "lorie/buffer.c"

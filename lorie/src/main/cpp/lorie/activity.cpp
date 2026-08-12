@@ -39,7 +39,7 @@ static int64_t nowMs(void) {
 
 static struct {
     jclass self;
-    jmethodID getInstance, clientConnectedStateChanged, resetIme;
+    jmethodID getInstance, clientConnectedStateChanged, resetIme, controllerRumble;
 } MainActivity = {0};
 
 static struct {
@@ -144,6 +144,7 @@ static jlong nativeInit(JNIEnv *env, jobject thiz) {
         MainActivity.getInstance = FindMethodOrDie(env, MainActivity.self, "getInstance", "()Lcom/termux/x11/MainActivity;", JNI_TRUE);
         MainActivity.clientConnectedStateChanged = FindMethodOrDie(env, MainActivity.self, "clientConnectedStateChanged", "()V", JNI_FALSE);
         MainActivity.resetIme = FindMethodOrDie(env, env->GetObjectClass(thiz), "resetIme", "()V", JNI_FALSE);
+        MainActivity.controllerRumble = FindMethodOrDie(env, MainActivity.self, "controllerRumble", "(IIII)V", JNI_FALSE);
     }
 
     return (jlong) (intptr_t) new (malloc(sizeof(LorieViewResources))) LorieViewResources(env, thiz);
@@ -254,6 +255,19 @@ int LorieViewResources::xcallback(int fd, int events) {
                 }
                 case EVENT_WINDOW_FOCUS_CHANGED: {
                     env->CallVoidMethod(thiz, MainActivity.resetIme);
+                    break;
+                }
+                case EVENT_GAMEPAD_RUMBLE: {
+                    jobject instance = env->CallStaticObjectMethod(MainActivity.self, MainActivity.getInstance);
+                    if (instance) {
+                        env->CallVoidMethod(instance, MainActivity.controllerRumble,
+                                            (jint)e.gamepadRumble.effect,
+                                            (jint)e.gamepadRumble.low,
+                                            (jint)e.gamepadRumble.high,
+                                            (jint)e.gamepadRumble.durationMs);
+                        env->DeleteLocalRef(instance);
+                    }
+                    break;
                 }
             }
         }

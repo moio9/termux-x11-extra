@@ -531,6 +531,21 @@ void lorieRequestClipboard(void) {
     }
 }
 
+extern "C" void lorieSetControllerRumble(uint8_t effect, uint16_t low,
+                                           uint16_t high,
+                                           uint32_t durationMs) {
+    if (conn_fd != -1) {
+        lorieEvent e = { .gamepadRumble = {
+            .t = EVENT_GAMEPAD_RUMBLE,
+            .effect = effect,
+            .low = low,
+            .high = high,
+            .durationMs = durationMs,
+        } };
+        write(conn_fd, &e, sizeof(e));
+    }
+}
+
 bool lorieConnectionAlive(void) {
     if (conn_fd == -1)
         return false;

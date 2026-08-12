@@ -116,6 +116,15 @@ public class MainActivity extends AppCompatActivity {
 
     public GamepadInputHandler getGamepadHandler() { return gamepadHandler; }
 
+    /** Called by the LORIE-CONTROLLER X11 extension through the private UI channel. */
+    public void controllerRumble(int effect, int low, int high, int durationMs) {
+        if (gamepadHandler == null) return;
+        if ((low == 0 && high == 0) || durationMs <= 0)
+            gamepadHandler.cancelRumble();
+        else
+            gamepadHandler.rumble(low, high, durationMs);
+    }
+
     public static final String ACTION_STOP = "com.termux.x11.ACTION_STOP";
     public static final String ACTION_CUSTOM = "com.termux.x11.ACTION_CUSTOM";
 

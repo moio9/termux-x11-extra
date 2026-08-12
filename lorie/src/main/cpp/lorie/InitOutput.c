@@ -34,6 +34,7 @@
 #include "glxutil.h"
 #include "fbconfigs.h"
 #include "inpututils.h"
+#include "extension.h"
 #include "exa.h"
 #include "drm_fourcc.h"
 
@@ -790,12 +791,21 @@ void lorieConfigureNotify(int width, int height, int framerate, size_t name_size
 }
 
 void InitOutput(ScreenInfo * screen_info, int argc, char **argv) {
+    static Bool controllerExtensionRegistered = FALSE;
+    static const ExtensionModule controllerExtension = {
+        LorieControllerExtensionInit, "LORIE-CONTROLLER", NULL
+    };
     int depths[] = { 1, 4, 8, 15, 16, 24, 32 };
     int bpp[] =    { 1, 8, 8, 16, 16, 32, 32 };
     int i;
 
     if (monitorResolution == 0)
         monitorResolution = 96;
+
+    if (!controllerExtensionRegistered) {
+        LoadExtensionList(&controllerExtension, 1, TRUE);
+        controllerExtensionRegistered = TRUE;
+    }
 
     for(i = 0; i < ARRAY_SIZE(depths); i++) {
         screen_info->formats[i].depth = depths[i];
