@@ -163,7 +163,7 @@ typedef union {
     } gamepad;
     struct {
         uint8_t t;
-        wchar_t code;
+        uint32_t code;
     } unicode;
     struct {
         uint8_t t;
