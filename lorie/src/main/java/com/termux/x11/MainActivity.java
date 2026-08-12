@@ -570,7 +570,7 @@ public class MainActivity extends AppCompatActivity {
             for (View view : toRemove) {
                 buttonLayer.removeView(view);
             }
-            if (LorieView.connected()){
+            if (getLorieView().connected()) {
                 SharedPreferences prefs = getSharedPreferences(AppConstants.PREFS_BUTTON_PREFS, MODE_PRIVATE);
                 String screenID = getDisplayId(this);
                 String lastPreset = prefs.getString(AppConstants.PREFS_LAST_USED_PRESET_PREFIX + screenID, AppConstants.PRESET_EMPTY);
