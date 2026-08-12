@@ -194,6 +194,12 @@ Use `termux-x11-preferences "fullscreen"="false" "showAdditionalKbd"="true"` to 
 Termux:X11-Extra activity should be available in background or foreground, otherwise `termux-x11-preferences` tool will hang indefinitely.
 In the case if there is `Store preferences for secondary displays separately` preference active `termux-x11-preference` will use/modify preferences of display where Termux:X11 activity is currently opened.
 
+## Native SDL2 controller bridge
+
+The controller captured by the Android activity can be exposed directly as an
+SDL2 game controller for native Termux applications and Wine without a Wine
+patch. See [the SDL2 controller bridge documentation](docs/controller-sdl2.md).
+
 ## Using with 3rd party apps
 It is possible to use Termux:X11-Extra with 3rd party apps.
 Check how `shell-loader/src/main/java/com/termux/x11/Loader.java` works.

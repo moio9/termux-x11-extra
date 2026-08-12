@@ -78,6 +78,7 @@ public class GamepadInputHandler {
     private static final int BTN_SELECT = 1 << 7;
     private static final int BTN_L3     = 1 << 8;
     private static final int BTN_R3     = 1 << 9;
+    private static final int BTN_HOME   = 1 << 10;
 
     public GamepadInputHandler(Context context,
                                LorieView lorieView,
@@ -148,8 +149,8 @@ public class GamepadInputHandler {
             case KeyEvent.KEYCODE_BUTTON_L1:     return BTN_L1;
             case KeyEvent.KEYCODE_BUTTON_R1:     return BTN_R1;
 
-            case KeyEvent.KEYCODE_BUTTON_START:
-            case KeyEvent.KEYCODE_BUTTON_MODE:   return BTN_START;
+            case KeyEvent.KEYCODE_BUTTON_START:  return BTN_START;
+            case KeyEvent.KEYCODE_BUTTON_MODE:   return BTN_HOME;
 
             case KeyEvent.KEYCODE_BUTTON_SELECT:
             case KeyEvent.KEYCODE_BACK:          return BTN_SELECT;
@@ -158,6 +159,37 @@ public class GamepadInputHandler {
             case KeyEvent.KEYCODE_BUTTON_THUMBR: return BTN_R3;
         }
         return 0;
+    }
+
+    /*
+     * Stable, one-based button numbering used by the Lorie XI2 device.
+     * Keep this independent from Android key codes: XI2 button details are
+     * limited to a byte and SDL needs a predictable layout.
+     */
+    private int x11ButtonForKey(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_BUTTON_A:
+            case KeyEvent.KEYCODE_BUTTON_1:      return 1;
+            case KeyEvent.KEYCODE_BUTTON_B:
+            case KeyEvent.KEYCODE_BUTTON_2:      return 2;
+            case KeyEvent.KEYCODE_BUTTON_X:
+            case KeyEvent.KEYCODE_BUTTON_3:      return 3;
+            case KeyEvent.KEYCODE_BUTTON_Y:
+            case KeyEvent.KEYCODE_BUTTON_4:      return 4;
+            case KeyEvent.KEYCODE_BUTTON_L1:     return 5;
+            case KeyEvent.KEYCODE_BUTTON_R1:     return 6;
+            case KeyEvent.KEYCODE_BUTTON_SELECT:
+            case KeyEvent.KEYCODE_BACK:          return 7;
+            case KeyEvent.KEYCODE_BUTTON_START:  return 8;
+            case KeyEvent.KEYCODE_BUTTON_THUMBL: return 9;
+            case KeyEvent.KEYCODE_BUTTON_THUMBR: return 10;
+            case KeyEvent.KEYCODE_DPAD_UP:       return 11;
+            case KeyEvent.KEYCODE_DPAD_DOWN:     return 12;
+            case KeyEvent.KEYCODE_DPAD_LEFT:     return 13;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:    return 14;
+            case KeyEvent.KEYCODE_BUTTON_MODE:   return 15;
+            default:                             return 0;
+        }
     }
 
     private void onDeviceChanged(int deviceId) {
@@ -279,13 +311,19 @@ public class GamepadInputHandler {
             if (out != 0) return emitMappedKey(KeyEvent.ACTION_DOWN, out);
         }
 
-        if (isDpadKey(keyCode)) { setDpadFromKey(keyCode, true); sendAsync(); return true; }
+        if (isDpadKey(keyCode)) {
+            setDpadFromKey(keyCode, true);
+            forwardGamepadButtonEvent(keyCode, true);
+            sendAsync();
+            return true;
+        }
         if (e != null) lastGamepadDeviceId = e.getDeviceId();
         int bit = bitForKey(keyCode);
         if (bit != 0) {
             synchronized (state) {
                 state.buttons |= bit;
             }
+            forwardGamepadButtonEvent(keyCode, true);
             sendAsync();
             return true;
         }
@@ -298,13 +336,19 @@ public class GamepadInputHandler {
             if (out != 0) return emitMappedKey(KeyEvent.ACTION_UP, out);
         }
 
-        if (isDpadKey(keyCode)) { setDpadFromKey(keyCode, false); sendAsync(); return true; }
+        if (isDpadKey(keyCode)) {
+            setDpadFromKey(keyCode, false);
+            forwardGamepadButtonEvent(keyCode, false);
+            sendAsync();
+            return true;
+        }
         if (e != null) lastGamepadDeviceId = e.getDeviceId();
         int bit = bitForKey(keyCode);
         if (bit != 0) {
             synchronized (state) {
                 state.buttons &= ~bit;
             }
+            forwardGamepadButtonEvent(keyCode, false);
             sendAsync();
             return true;
         }
@@ -353,19 +397,13 @@ public class GamepadInputHandler {
         return (hx != 0f || hy != 0f);
     }
 
-    private void sendGamepadButtonEvent(int button, boolean pressed) {
-        if (forwardToLorie && lorieView != null) {
+    private void forwardGamepadButtonEvent(int keyCode, boolean pressed) {
+        final int button = x11ButtonForKey(keyCode);
+        if (button != 0 && forwardToLorie && lorieView != null) {
             lorieView.sendGamepadEvent(button, pressed, 0f, 0f, 0);
         }
-        int bit = bitForKey(button);
-        if (bit != 0) {
-            synchronized (state) {
-                if (pressed) state.buttons |= bit; else state.buttons &= ~bit;
-            }
-            sendAsync();
-        }
-        Log.d(TAG, "keyCode=" + button + " -> bit=" + bit + " pressed=" + pressed + " srcForward=" + forwardToLorie);
-
+        Log.d(TAG, "keyCode=" + keyCode + " -> XI2 button=" + button
+                + " pressed=" + pressed + " srcForward=" + forwardToLorie);
     }
     private static int clampByte(float v01) {
         int b = Math.round(Math.max(0f, Math.min(1f, v01)) * 255f);

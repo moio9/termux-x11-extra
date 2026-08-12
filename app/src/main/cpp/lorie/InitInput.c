@@ -289,7 +289,7 @@ static int lorieGamepadProc(DeviceIntPtr device, int what) {
 
 
 #define NBUTTONS 16
-#define NAXES 8
+#define NAXES 6
 
     BYTE map[NBUTTONS + 1] = {0};
     Atom btn_labels[NBUTTONS] = {0};
@@ -304,8 +304,12 @@ static int lorieGamepadProc(DeviceIntPtr device, int what) {
             for (i = 1; i <= NBUTTONS; i++)
                 map[i] = i;
 
-            axes_labels[0] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_X);
-            axes_labels[1] = XIGetKnownProperty(AXIS_LABEL_PROP_REL_Y);
+            axes_labels[0] = MakeAtom("Termux Gamepad Left X", sizeof("Termux Gamepad Left X") - 1, TRUE);
+            axes_labels[1] = MakeAtom("Termux Gamepad Left Y", sizeof("Termux Gamepad Left Y") - 1, TRUE);
+            axes_labels[2] = MakeAtom("Termux Gamepad Right X", sizeof("Termux Gamepad Right X") - 1, TRUE);
+            axes_labels[3] = MakeAtom("Termux Gamepad Right Y", sizeof("Termux Gamepad Right Y") - 1, TRUE);
+            axes_labels[4] = MakeAtom("Termux Gamepad Left Trigger", sizeof("Termux Gamepad Left Trigger") - 1, TRUE);
+            axes_labels[5] = MakeAtom("Termux Gamepad Right Trigger", sizeof("Termux Gamepad Right Trigger") - 1, TRUE);
 
 
             btn_labels[0] = XIGetKnownProperty(BTN_LABEL_PROP_BTN_0);  // A
@@ -344,6 +348,14 @@ static int lorieGamepadProc(DeviceIntPtr device, int what) {
                 !InitValuatorAxisStruct(device, 0, axes_labels[0], -32768, 32767, 1, 0, 1,
                                         Absolute) ||
                 !InitValuatorAxisStruct(device, 1, axes_labels[1], -32768, 32767, 1, 0, 1,
+                                        Absolute) ||
+                !InitValuatorAxisStruct(device, 2, axes_labels[2], -32768, 32767, 1, 0, 1,
+                                        Absolute) ||
+                !InitValuatorAxisStruct(device, 3, axes_labels[3], -32768, 32767, 1, 0, 1,
+                                        Absolute) ||
+                !InitValuatorAxisStruct(device, 4, axes_labels[4], 0, 32767, 1, 0, 1,
+                                        Absolute) ||
+                !InitValuatorAxisStruct(device, 5, axes_labels[5], 0, 32767, 1, 0, 1,
                                         Absolute)) {
                 return BadValue;
             }
@@ -398,7 +410,9 @@ void InitInput(__unused int argc, __unused char *argv[]) {
     AttachDevice(NULL, lorieMouse, inputInfo.pointer);
     AttachDevice(NULL, lorieTouch, inputInfo.pointer);
     AttachDevice(NULL, lorieKeyboard, inputInfo.keyboard);
-    AttachDevice(NULL, lorieGamepad, inputInfo.pointer);
+    /* Keep the gamepad floating. Attaching it to the core pointer would make
+     * stick and face-button events move/click the desktop. XI2 raw-event
+     * consumers (including our SDL backend) can still receive its events. */
 
     (void) mieqInit();
 }

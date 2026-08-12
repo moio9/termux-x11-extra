@@ -30,7 +30,7 @@
 static int argc = 0;
 static char** argv = NULL;
 __LIBC_HIDDEN__ volatile int conn_fd = -1; // The only variable shared with activity code.
-extern DeviceIntPtr lorieMouse, lorieTouch, lorieKeyboard, loriePen, lorieEraser;
+extern DeviceIntPtr lorieMouse, lorieTouch, lorieKeyboard, loriePen, lorieEraser, lorieGamepad;
 extern ScreenPtr pScreenPtr;
 extern int ucs2keysym(long ucs);
 void lorieKeysymKeyboardEvent(KeySym keysym, int down);
@@ -263,6 +263,83 @@ static Bool handleTouchEvent(__unused ClientPtr pClient, void *closure) {
     return TRUE;
 }
 
+static uint32_t gamepad_direct_buttons;
+static uint32_t gamepad_hat_buttons;
+
+static void queueGamepadButton(unsigned int button, Bool pressed) {
+    uint32_t bit, old_buttons, new_buttons;
+
+    if (!lorieGamepad || button < 1 || button > 16)
+        return;
+
+    bit = 1U << (button - 1);
+    old_buttons = gamepad_direct_buttons | gamepad_hat_buttons;
+    if (pressed)
+        gamepad_direct_buttons |= bit;
+    else
+        gamepad_direct_buttons &= ~bit;
+    new_buttons = gamepad_direct_buttons | gamepad_hat_buttons;
+
+    if ((old_buttons ^ new_buttons) & bit)
+        QueuePointerEvents(lorieGamepad,
+                           (new_buttons & bit) ? ButtonPress : ButtonRelease,
+                           button, POINTER_RELATIVE, NULL);
+}
+
+static void queueGamepadHat(int x, int y) {
+    uint32_t old_buttons = gamepad_direct_buttons | gamepad_hat_buttons;
+    uint32_t new_hat = 0;
+    uint32_t new_buttons, changed;
+    unsigned int button;
+
+    /* XI2 buttons 11..14 are Up, Down, Left and Right respectively. */
+    if (y < -127) new_hat |= 1U << 10;
+    if (y >  127) new_hat |= 1U << 11;
+    if (x < -127) new_hat |= 1U << 12;
+    if (x >  127) new_hat |= 1U << 13;
+    gamepad_hat_buttons = new_hat;
+
+    new_buttons = gamepad_direct_buttons | gamepad_hat_buttons;
+    changed = (old_buttons ^ new_buttons) & (0xFU << 10);
+    for (button = 11; button <= 14; button++) {
+        uint32_t bit = 1U << (button - 1);
+        if (changed & bit)
+            QueuePointerEvents(lorieGamepad,
+                               (new_buttons & bit) ? ButtonPress : ButtonRelease,
+                               button, POINTER_RELATIVE, NULL);
+    }
+}
+
+static void queueGamepadAxes(const lorieEvent *e) {
+    ValuatorMask mask;
+
+    if (!lorieGamepad)
+        return;
+
+    valuator_mask_zero(&mask);
+    switch (e->gamepad.axisID) {
+        case 0: /* left stick */
+            valuator_mask_set_double(&mask, 0, e->gamepad.axisX);
+            valuator_mask_set_double(&mask, 1, e->gamepad.axisY);
+            break;
+        case 1: /* right stick */
+            valuator_mask_set_double(&mask, 2, e->gamepad.axisX);
+            valuator_mask_set_double(&mask, 3, e->gamepad.axisY);
+            break;
+        case 2: /* triggers arrive as 0..255 */
+            valuator_mask_set_double(&mask, 4, e->gamepad.axisX * (32767.0 / 255.0));
+            valuator_mask_set_double(&mask, 5, e->gamepad.axisY * (32767.0 / 255.0));
+            break;
+        case 3: /* d-pad is represented as a SDL hat by the client backend */
+            queueGamepadHat(e->gamepad.axisX, e->gamepad.axisY);
+            return;
+        default:
+            return;
+    }
+
+    QueuePointerEvents(lorieGamepad, MotionNotify, 0, POINTER_ABSOLUTE, &mask);
+}
+
 void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
     ValuatorMask mask;
     lorieEvent e = {0};
@@ -379,6 +456,12 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
             }
             case EVENT_KEY:
                 QueueKeyboardEvents(lorieKeyboard, e.key.state ? KeyPress : KeyRelease, e.key.key);
+                break;
+            case EVENT_GAMEPAD:
+                if (e.gamepad.button)
+                    queueGamepadButton(e.gamepad.button, e.gamepad.pressed);
+                else
+                    queueGamepadAxes(&e);
                 break;
             case EVENT_UNICODE: {
                 int ks = ucs2keysym((long) e.unicode.code);
