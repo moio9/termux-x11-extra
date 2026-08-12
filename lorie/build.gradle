@@ -1,0 +1,125 @@
+import org.gradle.api.artifacts.ProjectDependency
+
+apply plugin: 'com.android.library'
+apply from: 'version.gradle'
+
+rootProject.subprojects.each { p -> if (p != project) project.evaluationDependsOn(p.path) }
+
+// The application module that actually ships this library, found by real
+// dependency relationship rather than "has the application plugin" (e.g.
+// shell-loader also applies com.android.application, but isn't our host).
+def hostProjects = rootProject.subprojects.findAll { p ->
+    p != project && p.plugins.hasPlugin('com.android.application') &&
+    p.configurations.findByName('implementation')?.dependencies?.any {
+        it instanceof ProjectDependency && it.path == project.path
+    }
+}
+if (hostProjects.isEmpty())
+    throw new GradleException("No application module depends on :${project.name}; cannot determine APPLICATION_ID")
+if (hostProjects.size() > 1)
+    throw new GradleException("Multiple application modules depend on :${project.name} (${hostProjects.collect { it.path }}); cannot determine which one is the real host")
+def hostProject = hostProjects[0]
+def hostApplicationId = hostProject.android.defaultConfig.applicationId ?: hostProject.android.namespace
+
+android {
+    namespace 'com.termux.x11'
+    //noinspection GrDeprecatedAPIUsage
+    compileSdkVersion 34
+    ndkVersion termuxX11NdkVersion
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 34
+        buildConfigField "String", "VERSION_NAME", "\"${termuxX11VersionName}\""
+        buildConfigField "String", "COMMIT", "\"" + ("git rev-parse HEAD\n".execute().getText().trim() ?: (System.getenv('CURRENT_COMMIT') ?: "NO_COMMIT")) + "\""
+        buildConfigField "String", "APPLICATION_ID", "\"${hostApplicationId}\""
+
+        consumerProguardFiles 'proguard-rules.pro'
+    }
+
+    compileOptions.sourceCompatibility JavaVersion.VERSION_1_9
+    compileOptions.targetCompatibility JavaVersion.VERSION_1_9
+    externalNativeBuild.cmake.path "src/main/cpp/CMakeLists.txt"
+    packagingOptions.jniLibs.useLegacyPackaging false
+    buildFeatures.aidl true
+    buildFeatures.buildConfig true
+}
+
+dependencies {
+    //noinspection DifferentStdlibGradleVersion
+
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.4.10"
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0'
+    implementation 'androidx.preference:preference:1.2.1'
+    compileOnly project(':shell-loader:stub')
+}
+afterEvaluate {
+    tasks.register("generatePrefs") {
+        //noinspection UnnecessaryQualifiedReference
+        def xml = groovy.xml.DOMBuilder.parse((new StringReader(file('src/main/res/xml/preferences.xml').text)))
+        def preferenceNodes = xml.documentElement.getElementsByTagName("*")
+        def preferences = []
+
+        for (int i = 0; i < preferenceNodes.length; i++) {
+            def node = preferenceNodes.item(i)
+            if (node.nodeName == 'EditTextPreference' && node.getAttribute("app:key") != "extra_keys_config")
+                preferences << [ type: 'String',  key: node.getAttribute("app:key"), default: node.getAttribute("app:defaultValue") ]
+            else if (node.nodeName == 'SeekBarPreference')
+                preferences << [ type: 'Int', key: node.getAttribute("app:key"), default: node.getAttribute("app:defaultValue") ]
+            else if (node.nodeName == 'ListPreference') {
+                def entries = node.getAttribute("app:entries")
+                def values = node.getAttribute("app:entryValues")
+                preferences << [type: 'List', key: node.getAttribute("app:key"), default: node.getAttribute("app:defaultValue"),
+                                entries: entries.substring(7, entries.length()), values: values.substring(7, values.length())]
+            }
+            else if (node.nodeName == 'SwitchPreferenceCompat')
+                preferences << [ type: 'Boolean',  key: node.getAttribute("app:key"), default: node.getAttribute("app:defaultValue") ]
+        }
+
+        def out = file('build/generated/java/com/termux/x11/Prefs.java')
+        out.getParentFile().exists() || out.getParentFile().mkdirs()
+        out.delete()
+        out.createNewFile()
+
+        out << 'package com.termux.x11;\n'
+        out << 'import java.util.HashMap;\n'
+        out << 'import android.content.Context;\n'
+        out << 'import android.content.SharedPreferences;\n'
+        out << 'import com.termux.x11.utils.TermuxX11ExtraKeys;\n'
+        out << '\n'
+        out << 'public class Prefs extends LoriePreferences.PrefsProto {\n'
+        preferences.each {
+            if (it.type == 'Int' || it.type == 'Boolean')
+                out << "  public final ${it.type}Preference ${it.key} = new ${it.type}Preference(\"${it.key}\", ${it.default});\n"
+            else if (it.type == 'String')
+                out << "  public final StringPreference ${it.key} = new StringPreference(\"${it.key}\", \"${it.default}\");\n"
+            else if (it.type == 'List')
+                out << "  public final ${it.type}Preference ${it.key} = new ${it.type}Preference(\"${it.key}\", \"${it.default}\", R.array.${it.entries}, R.array.${it.values});\n"
+        }
+        out << '  public final StringPreference extra_keys_config = new StringPreference("extra_keys_config", TermuxX11ExtraKeys.DEFAULT_IVALUE_EXTRA_KEYS);\n'
+        out << '  public final HashMap<String, Preference> keys = new HashMap<>() {{\n'
+        preferences.each { out << '    put("' + it.key + '", ' + it.key + ');\n' }
+        out << '    put("extra_keys_config", extra_keys_config);\n'
+        out << '  }};\n'
+        out << '\n'
+        out << '  public Prefs(Context ctx) {\n'
+        out << '    super(ctx);\n'
+        out << '    for (SharedPreferences store : new SharedPreferences[]{ builtInDisplayPreferences, secondaryDisplayPreferences }) {\n'
+        out << '      Object legacyKeepScreenOn = store.getAll().get("keepScreenOn");\n'
+        out << '      if (legacyKeepScreenOn instanceof Boolean && !store.contains("screenIdleTimeout"))\n'
+        out << '        store.edit().putString("screenIdleTimeout", (Boolean) legacyKeepScreenOn ? "never" : "system").commit();\n'
+        out << '    }\n'
+        out << '  }\n'
+        out << '}\n'
+    }
+    android.sourceSets.main.java.srcDirs += 'build/generated/java'
+    preBuild.dependsOn generatePrefs
+
+    tasks.register("generateShortcuts") {
+        def out = file('build/generated/templateRes/xml/lorie_shortcuts.xml')
+        out.getParentFile().exists() || out.getParentFile().mkdirs()
+        out.text = file('src/main/templates/xml/shortcuts.xml').text
+                .replace('@@APPLICATION_ID@@', hostApplicationId)
+    }
+    android.sourceSets.main.res.srcDirs += 'build/generated/templateRes'
+    preBuild.dependsOn generateShortcuts
+}

@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - master
+      - gamepad-xi2-upstream
     paths-ignore:
       - '**.md'
       - 'img/**'
@@ -24,77 +25,60 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Clone repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
-        submodules: recursive
+        submodules: false
         fetch-depth: 1
     - name: Validation
-      uses: gradle/actions/wrapper-validation@v5
-      
+      uses: gradle/actions/wrapper-validation@v6.3.0
+
     - name: Java setup
       uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: '17'
-        
+
     - name: Restore cache
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
-
+            .git/modules
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '.gitmodules') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+    - name: Fetch submodules
+      run: git submodule update --init --recursive --jobs 8 --depth 1
+
     - name: Build
       run: ./gradlew assembleDebug
-    - name: Build companion package
-      run: ./build_termux_package
-    - name: Store app-arm64-v8a-debug
-      uses: actions/upload-artifact@v5
-      with:
-        name: termux-x11-arm64-v8a-debug
-        path: ./app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
-    
-    - name: Store app-armeabi-v7a-debug
-      uses: actions/upload-artifact@v5
-      with:
-        name: termux-x11-armeabi-v7a-debug
-        path: ./app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk
-    
     - name: Store app-universal-debug
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v7
       with:
         name: termux-x11-universal-debug
-        path: ./app/build/outputs/apk/debug/app-universal-debug.apk
-    
-    - name: Store app-x86_64-debug
-      uses: actions/upload-artifact@v5
+        path: ./lorie-app/build/outputs/apk/standalone/debug/termux-x11-universal-debug.apk
+
+    - name: Store sharedUid-debug APK
+      uses: actions/upload-artifact@v7
       with:
-        name: termux-x11-x86_64-debug
-        path: ./app/build/outputs/apk/debug/app-x86_64-debug.apk
-    
-    - name: Store app-x86-debug
-      uses: actions/upload-artifact@v5
-      with:
-        name: termux-x11-x86-debug
-        path: ./app/build/outputs/apk/debug/app-x86-debug.apk
-    
+        name: termux-x11-sharedUid-debug
+        path: ./lorie-app/build/outputs/apk/sharedUid/debug/termux-x11-universal-sharedUid-debug.apk
+
     - name: Store companion package
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v7
       with:
         name: termux-companion packages
         path: |
-          ./app/build/outputs/apk/debug/termux-x11-*-all.deb
-          ./app/build/outputs/apk/debug/termux-x11-*-any.pkg.tar.xz
-        
+          ./shell-loader/build/outputs/companion/termux-x11-*-all.deb
+          ./shell-loader/build/outputs/companion/termux-x11-*-any.pkg.tar.xz
+
     - name: Store unstripped libraries with debug symbols
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v7
       with:
         name: termux-x11-unstripped-libraries-for-ndk-stack
-        path: ./app/build/intermediates/cxx/Debug/*
+        path: ./lorie/build/intermediates/cxx/Debug/*
 
     - name: Update Nightly Release
       uses: andelf/nightly-release@main
@@ -110,6 +94,7 @@ jobs:
           This is a nightly release of the termux-x11 app.
           Based on ${{ github.sha }}
         files: |
-          ./app/build/outputs/apk/debug/app-*-debug.apk
-          ./app/build/outputs/apk/debug/termux-x11-*-all.deb
-          ./app/build/outputs/apk/debug/termux-x11-*-any.pkg.tar.xz
+          ./lorie-app/build/outputs/apk/standalone/debug/termux-x11-universal-debug.apk
+          ./lorie-app/build/outputs/apk/sharedUid/debug/termux-x11-universal-sharedUid-debug.apk
+          ./shell-loader/build/outputs/companion/termux-x11-*-all.deb
+          ./shell-loader/build/outputs/companion/termux-x11-*-any.pkg.tar.xz

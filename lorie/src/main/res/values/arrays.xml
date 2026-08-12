@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string-array name="touchscreenInputModesEntries">
+        <item>Trackpad</item>
+        <item>Simulated touchscreen</item>
+        <item>Direct touch</item>
+    </string-array>
+    <string-array name="touchscreenInputModesValues">
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+    <string-array name="screenIdleTimeoutEntries">
+        <item>Never (keep screen on)</item>
+        <item>1 minute</item>
+        <item>5 minutes</item>
+        <item>10 minutes</item>
+        <item>20 minutes</item>
+        <item>1 hour</item>
+        <item>System</item>
+    </string-array>
+    <string-array name="screenIdleTimeoutValues">
+        <item>never</item>
+        <item>1</item>
+        <item>5</item>
+        <item>10</item>
+        <item>20</item>
+        <item>60</item>
+        <item>system</item>
+    </string-array>
+    <string-array name="transformCapturedPointerEntries">
+        <item>No</item>
+        <item>Clockwise</item>
+        <item>Counter clockwise</item>
+        <item>Upside down</item>
+        <item>Automatic (for touchpad)</item>
+    </string-array>
+    <string-array name="transformCapturedPointerValues">
+        <item>no</item>
+        <item>c</item>
+        <item>cc</item>
+        <item>ud</item>
+        <item>at</item>
+    </string-array>
+
+    <string-array name="displayResolutionVariants">
+        <item>native</item>
+        <item>scaled</item>
+        <item>exact</item>
+        <item>custom</item>
+    </string-array>
+    <string-array name="displayResolution">
+        <item>320x200</item>
+        <item>320x240</item>
+        <item>352x288</item>
+        <item>400x240</item>
+        <item>640x350</item>
+        <item>640x480</item>
+        <item>800x480</item>
+        <item>800x600</item>
+        <item>1024x768</item>
+        <item>1280x720</item>
+        <item>1280x960</item>
+        <item>1280x1024</item>
+        <item>1400x1050</item>
+        <item>1600x1024</item>
+        <item>1600x1200</item>
+        <item>1366x768</item>
+        <item>1680x1050</item>
+        <item>1920x1080</item>
+        <item>1920x1200</item>
+        <item>2048x1536</item>
+        <item>2560x1600</item>
+        <item>2560x2048</item>
+        <item>3840x2160</item>
+        <item>7680x4320</item>
+    </string-array>
+    <string-array name="displayFilteringVariants">
+        <item>bilinear</item>
+        <item>nearest</item>
+    </string-array>
+    <string-array name="userActionsValues">
+        <item>no action</item>
+        <item>toggle soft keyboard</item>
+        <item>toggle additional key bar</item>
+        <item>open preferences</item>
+        <item>open layout</item>
+        <item>release pointer and keyboard capture</item>
+        <item>toggle fullscreen</item>
+        <item>restart activity</item>
+        <item>exit</item>
+    </string-array>
+    <string-array name="userActionsVolumeDownValues">
+        <item>no action</item>
+        <item>toggle soft keyboard</item>
+        <item>toggle additional key bar</item>
+        <item>open preferences</item>
+        <item>open layout</item>
+        <item>release pointer and keyboard capture</item>
+        <item>toggle fullscreen</item>
+        <item>restart activity</item>
+        <item>exit</item>
+        <item>send volume down</item>
+    </string-array>
+
+    <string-array name="userActionsVolumeUpValues">
+        <item>no action</item>
+        <item>toggle soft keyboard</item>
+        <item>toggle additional key bar</item>
+        <item>open preferences</item>
+        <item>open layout</item>
+        <item>release pointer and keyboard capture</item>
+        <item>toggle fullscreen</item>
+        <item>restart activity</item>
+        <item>exit</item>
+        <item>send volume up</item>
+    </string-array>
+
+    <string-array name="userActionsMediaKeyValues">
+        <item>no action</item>
+        <item>toggle soft keyboard</item>
+        <item>toggle additional key bar</item>
+        <item>open preferences</item>
+        <item>open layout</item>
+        <item>release pointer and keyboard capture</item>
+        <item>toggle fullscreen</item>
+        <item>restart activity</item>
+        <item>exit</item>
+        <item>send media action</item>
+    </string-array>
+
+    <string-array name="forceOrientationVariants">
+        <item>auto</item>
+        <item>portrait</item>
+        <item>landscape</item>
+        <item>reverse portrait</item>
+        <item>reverse landscape</item>
+    </string-array>
+    <string-array name="gamepadInputTypeEntries">
+        <item>XDInput</item>
+        <item>XInput</item>
+        <item>DirectInput</item>
+        <item>Gamepad → Keys</item>
+        <item>None</item>
+    </string-array>
+
+    <string-array name="gamepadInputTypeValues">
+        <item>all</item>
+        <item>xinput</item>
+        <item>dinput</item>
+        <item>keys</item>
+        <item>none</item>
+    </string-array>
+
+    <string-array name="gamepadVibrateEntries">
+        <item>Controller</item>
+        <item>Phone</item>
+        <item>Both</item>
+        <item>Off</item>
+    </string-array>
+    <string-array name="gamepadVibrateValues">
+        <item>device</item>
+        <item>phone</item>
+        <item>both</item>
+        <item>off</item>
+    </string-array>
+
+    <string-array name="gamepad_state_hz_values">
+        <item>60</item>
+        <item>90</item>
+        <item>125</item>
+        <item>250</item>
+        <item>500</item>
+    </string-array>
+
+    <string-array name="gamepadModeEntries">
+        <item>Raw</item>
+        <item>Mapped</item>
+    </string-array>
+    <string-array name="gamepadModeValues">
+        <item>raw</item>
+        <item>mapped</item>
+    </string-array>
+
+    <string-array name="gamepadIDs">
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+
+    <string-array name="keybindOptionsEntries">
+        <item>none</item>
+
+        <item>ESC</item><item>ENTER</item><item>SPACE</item><item>TAB</item>
+        <item>BACKSPACE</item>
+        <item>UP</item><item>DOWN</item><item>LEFT</item><item>RIGHT</item>
+
+        <item>0</item><item>1</item><item>2</item><item>3</item><item>4</item>
+        <item>5</item><item>6</item><item>7</item><item>8</item><item>9</item>
+
+        <item>A</item><item>B</item><item>C</item><item>D</item><item>E</item>
+        <item>F</item><item>G</item><item>H</item><item>I</item><item>J</item>
+        <item>K</item><item>L</item><item>M</item><item>N</item><item>O</item>
+        <item>P</item><item>Q</item><item>R</item><item>S</item><item>T</item>
+        <item>U</item><item>V</item><item>W</item><item>X</item><item>Y</item><item>Z</item>
+    </string-array>
+
+    <string-array name="keybindOptionsValues">
+        <item>none</item>
+
+        <item>ESC</item><item>ENTER</item><item>SPACE</item><item>TAB</item>
+        <item>BACKSPACE</item>
+        <item>UP</item><item>DOWN</item><item>LEFT</item><item>RIGHT</item>
+
+        <item>0</item><item>1</item><item>2</item><item>3</item><item>4</item>
+        <item>5</item><item>6</item><item>7</item><item>8</item><item>9</item>
+
+        <item>A</item><item>B</item><item>C</item><item>D</item><item>E</item>
+        <item>F</item><item>G</item><item>H</item><item>I</item><item>J</item>
+        <item>K</item><item>L</item><item>M</item><item>N</item><item>O</item>
+        <item>P</item><item>Q</item><item>R</item><item>S</item><item>T</item>
+        <item>U</item><item>V</item><item>W</item><item>X</item><item>Y</item><item>Z</item>
+    </string-array>
+
+    <string-array name="ekbarPositionValues">
+        <item>top</item>
+        <item>bottom</item>
+        <item>left</item>
+        <item>right</item>
+    </string-array>
+</resources>

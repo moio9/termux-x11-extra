@@ -28,9 +28,20 @@ Just like any other X server.
 ## Setup Instructions
 Termux:X11-Extra requires Android 8 or later. It consists of an Android app and a companion termux package, and you must install both.
 
-The Android app is available via the [v x.y](https://github.com/moio9/termux-x11/releases/) of this repository. Download and install the `app-$ARCHITECTURE-debug.apk` matching your device's CPU architecture. (You can choose `app-universal-debug.apk` if you are not sure which architecture to pick, and it'll use a few extra MB of storage.) 
+The Android app is available via this fork's [nightly release tag](https://github.com/moio9/termux-x11-extra/releases/tag/nightly). Download and install `termux-x11-universal-debug.apk`.
 
 The companion termux package is available from the termux graphical repository. You can ensure it's enabled and install this package with `pkg i x11-repo && pkg i termux-x11-nightly`. If you need to, you can also download a `.deb` or `*.tar.xz` from the same nightly release tag as above.
+
+### Avoiding slowdowns
+<details>
+<summary>Android gives less CPU time to apps that aren't on screen — install the sharedUid APK to avoid this</summary>
+
+Android gives less CPU time to apps that aren't on screen. Once Termux:X11 opens, Android treats Termux itself as no longer being on screen, so things running inside Termux (like your desktop apps) can slow down.
+
+To avoid this, install `termux-x11-universal-sharedUid-debug.apk` instead of the regular one (same [nightly release tag](https://github.com/termux/termux-x11/releases/tag/nightly) or CI artifacts). This variant runs as part of Termux itself, so Android keeps treating it as one app and doesn't slow it down.
+
+This variant only works with the Termux app installed **from GitHub**, not F-Droid or Google Play — those are signed with different keys, and a shared UID requires matching signatures.
+</details>
 
 Finally, most people will want to use a desktop environment with Termux:X11-Extra. If you don't know what that means or don't know which one to pick, run `pkg i xfce` (also from `x11-repo`) to install a good one to start with. The rest of these instructions will assume that your goal is to run an XFCE desktop, or that you can modify the instructions as you follow them for your actual goal.
 
@@ -38,6 +49,10 @@ Finally, most people will want to use a desktop environment with Termux:X11-Extr
 You can start your desired graphical application by doing:
 ```
 ~termux-x11 :1 -xstartup "dbus-launch --exit-with-session xfce4-session"
+```
+or
+```
+termux-x11 :1 -- dbus-launch --exit-with-session xfce4-session
 ```
 or
 ```
@@ -59,7 +74,7 @@ termux-x11 :1
 In this case you can save TERMUX_X11_XSTARTUP somewhere in `.bashrc` or other script and not type it every time you invoke termux-x11.  
 
 
-If you're done using Termux:X11 just simply exit it through it's notification drawer by expanding the Termux:X11 notification then "Exit"
+If you're done using Termux:X11 just simply exit it through its notification drawer by expanding the Termux:X11 notification then "Exit"
 But you should pay attention that `termux-x11` command is still running and can not be killed this way.
 
 For some reason some devices output only black screen with cursor instead of normal output so you should pass `-legacy-drawing` option.
@@ -77,8 +92,19 @@ If you plan to use the program with proot, keep in mind that you need to launch 
 If passing this option is not possible, set the TMPDIR environment variable to point to the directory that corresponds to /tmp in the target container.
 If you are using proot-distro you should know that it is possible to start `termux-x11` command from inside proot container.
 
+Example, run in a Termux shell (not inside the proot container):
+```
+termux-x11 :1 &
+proot-distro login ubuntu --shared-tmp
+```
+Then, inside the container:
+```
+export DISPLAY=:1
+dbus-launch --exit-with-session xfce4-session
+```
+
 ## Using with chroot environment
-If you plan to use the program with chroot or unshare, you must to run it as root and set the TMPDIR environment variable to point to the directory that corresponds to /tmp in the target container. 
+If you plan to use the program with chroot or unshare, you must run it as root and set the TMPDIR environment variable to point to the directory that corresponds to /tmp in the target container.
 This directory must be accessible from the shell from which you launch termux-x11, i.e. it must be in the same SELinux context, same mount namespace, and so on.
 Also you must set `XKB_CONFIG_ROOT` environment variable pointing to container's `/usr/share/X11/xkb` directory, otherwise you will have `xkbcomp`-related errors.
 You can get loader for nightly build from an artifact of [last successful build](https://github.com/termux/termux-x11/actions/workflows/debug_build.yml)
@@ -102,6 +128,12 @@ pkill -f com.termux.x11
 
 ```
 am broadcast -a com.termux.x11.ACTION_STOP -p com.termux.x11
+```
+
+### Opening Termux:X11 activity from command line
+
+```
+am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
 ```
 
 ### Logs
@@ -183,7 +215,7 @@ termux-x11 :1 -xstartup "xfce4-session" -dpi 120
 It is possible to change preferences of termux-x11 from command line.
 `termux-x11-nightly` package contains `termux-x11-preference` tool which can be used like 
 ```shell
-termux-x11-preference [list] {key:value} [{key2:value2}]..."
+termux-x11-preference [list] {key:value} [{key2:value2}]...
 ```
 
 Use `termux-x11-preference list` to dump current preferences.

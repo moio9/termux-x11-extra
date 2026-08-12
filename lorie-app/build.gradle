@@ -1,0 +1,58 @@
+apply plugin: 'com.android.application'
+apply from: '../lorie/version.gradle'
+
+android {
+    namespace 'com.termux.x11.app'
+    compileSdkVersion 34
+    ndkVersion termuxX11NdkVersion
+    defaultConfig {
+        applicationId "com.termux.x11"
+        minSdkVersion 24
+        targetSdkVersion 34
+        versionCode 15
+        versionName termuxX11VersionName
+    }
+
+    flavorDimensions "uid"
+    productFlavors {
+        standalone {
+            dimension "uid"
+        }
+        sharedUid {
+            dimension "uid"
+            targetSdkVersion 28
+        }
+    }
+
+    signingConfigs.debug {
+        storeFile file('testkey_untrusted.jks')
+        keyAlias 'alias'
+        storePassword 'xrj45yWGLbsO7W0v'
+        keyPassword 'xrj45yWGLbsO7W0v'
+    }
+
+    compileOptions.sourceCompatibility JavaVersion.VERSION_1_9
+    compileOptions.targetCompatibility JavaVersion.VERSION_1_9
+    buildTypes.debug {
+        signingConfig signingConfigs.debug
+        minifyEnabled true
+        shrinkResources true
+        proguardFiles 'proguard-rules.pro'
+    }
+}
+
+// Release links and instructions point at this name, it does not follow the module.
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        def name = variant.flavorName == 'standalone' ? variant.buildType : "${variant.flavorName}-${variant.buildType}"
+        variant.outputs.each { output ->
+            output.outputFileName.set("termux-x11-universal-${name}.apk")
+        }
+    }
+}
+
+tasks.matching { it.name == 'assembleDebug' }.configureEach { dependsOn ':shell-loader:buildCompanionPackage' }
+
+dependencies {
+    implementation project(':lorie')
+}
