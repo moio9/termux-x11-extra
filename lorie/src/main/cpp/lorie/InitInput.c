@@ -397,6 +397,12 @@ void InitInput(__unused int argc, __unused char *argv[]) {
     AssignTypeAndName(lorieKeyboard, MakeAtom(XI_KEYBOARD, sizeof(XI_KEYBOARD) - 1, TRUE), "Lorie keyboard");
     AssignTypeAndName(lorieGamepad, MakeAtom("LORIE_GAMEPAD", sizeof("LORIE_GAMEPAD") - 1, TRUE), "Lorie gamepad");
 
+    /* EnableDevice() automatically attaches pointer devices with coreEvents
+     * enabled to the virtual core pointer.  A gamepad must stay outside that
+     * hierarchy: XI2 clients can still consume its device/raw events, while
+     * sticks and face buttons cannot move or click the desktop. */
+    lorieGamepad->coreEvents = FALSE;
+
     ActivateDevice(lorieMouse, FALSE);
     ActivateDevice(lorieTouch, FALSE);
     ActivateDevice(lorieKeyboard, FALSE);
@@ -410,9 +416,7 @@ void InitInput(__unused int argc, __unused char *argv[]) {
     AttachDevice(NULL, lorieMouse, inputInfo.pointer);
     AttachDevice(NULL, lorieTouch, inputInfo.pointer);
     AttachDevice(NULL, lorieKeyboard, inputInfo.keyboard);
-    /* Keep the gamepad floating. Attaching it to the core pointer would make
-     * stick and face-button events move/click the desktop. XI2 raw-event
-     * consumers (including our SDL backend) can still receive its events. */
+    AttachDevice(NULL, lorieGamepad, NULL);
 
     (void) mieqInit();
 }
