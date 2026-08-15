@@ -388,6 +388,14 @@ void lorieUpdateGamepadDevice(Bool present, int32_t androidDeviceId,
                               uint32_t vendorId, uint32_t productId,
                               uint8_t inputMode, Bool hasRumble,
                               const char *name) {
+    if (!present && (!lorieGamepad || lorieGamepadAndroidId == -1 ||
+                     androidDeviceId != lorieGamepadAndroidId)) {
+        __android_log_print(ANDROID_LOG_INFO, "LorieNative",
+                            "Ignoring stale gamepad removal: android=%d active=%d",
+                            androidDeviceId, lorieGamepadAndroidId);
+        return;
+    }
+
     if (lorieGamepad) {
         lorieResetGamepadState();
         RemoveDevice(lorieGamepad, TRUE);
