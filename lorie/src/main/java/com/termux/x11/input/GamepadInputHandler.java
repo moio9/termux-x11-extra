@@ -148,8 +148,10 @@ public class GamepadInputHandler {
         // backend = keys ?
         String backend = prefs.gamepadInputType.get();
         useKeybinds = "keys".equalsIgnoreCase(backend);
-        if ("dinput".equalsIgnoreCase(backend)) inputMode = INPUT_DINPUT;
-        else if ("all".equalsIgnoreCase(backend)) inputMode = INPUT_XDINPUT;
+        if ("dinput".equalsIgnoreCase(backend) ||
+                "directinput".equalsIgnoreCase(backend)) inputMode = INPUT_DINPUT;
+        else if ("all".equalsIgnoreCase(backend) ||
+                "xdinput".equalsIgnoreCase(backend)) inputMode = INPUT_XDINPUT;
         else if ("none".equalsIgnoreCase(backend)) inputMode = INPUT_NONE;
         else inputMode = INPUT_XINPUT;
         String configuredName = prefs.gamepadName.get();

@@ -468,7 +468,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startIpcFromCurrentConfig(LorieView lorieView) {
-        String mode = prefs.gamepadInputType.get(); // "all" / "xinput" / "dinput" / "none"
+        String mode = (prefs.gamepadInputType.get() + "").toLowerCase();
+        // "all" / "xinput" / "dinput" / "none", plus display-label aliases
         String host = prefs.gamepadHost.get();      // "127.0.0.1"
         int base    = Integer.parseInt(prefs.gamepadPortRumble.get()); // ex 4600
         int gpId    = Integer.parseInt(prefs.gamepadID.get());         // ex 1
@@ -477,8 +478,10 @@ public class MainActivity extends AppCompatActivity {
         GamepadIpc.HandshakeFormat fmt;
         switch ((prefs.gamepadInputType.get()+"").toLowerCase()) {
             case "xinput": fmt = GamepadIpc.HandshakeFormat.NEW;    break;
-            case "dinput": fmt = GamepadIpc.HandshakeFormat.LEGACY; break;
-            case "all":    fmt = GamepadIpc.HandshakeFormat.BOTH;   break;
+            case "dinput":
+            case "directinput": fmt = GamepadIpc.HandshakeFormat.LEGACY; break;
+            case "all":
+            case "xdinput": fmt = GamepadIpc.HandshakeFormat.BOTH;   break;
             case "none":   fmt = GamepadIpc.HandshakeFormat.NONE;   break;
             default:       fmt = GamepadIpc.HandshakeFormat.BOTH;   break;
         }
@@ -497,6 +500,7 @@ public class MainActivity extends AppCompatActivity {
                             case "xinput":
                                 return GamepadIpc.FLAG_INPUT_TYPE_XINPUT;
                             case "dinput":
+                            case "directinput":
                                 return GamepadIpc.FLAG_INPUT_TYPE_DINPUT
                                         | GamepadIpc.FLAG_DINPUT_MAPPER_XINPUT;
                             case "all":
