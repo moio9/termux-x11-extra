@@ -6,7 +6,7 @@
 #define LORIE_CONTROLLER_NAME "LORIE-CONTROLLER"
 
 #define LORIE_CONTROLLER_MAJOR_VERSION 1
-#define LORIE_CONTROLLER_MINOR_VERSION 0
+#define LORIE_CONTROLLER_MINOR_VERSION 1
 
 #define X_LorieControllerQueryVersion      0
 #define X_LorieControllerQueryCapabilities 1

@@ -69,7 +69,9 @@ ProcLorieControllerQueryCapabilities(ClientPtr client)
         reply.numButtons = 16;
         reply.numHats = 1;
         reply.mapping = LORIE_CONTROLLER_MAPPING_STANDARD;
-        if (lorieConnectionAlive()) {
+        reply.vendorId = lorieGamepadVendorId;
+        reply.productId = lorieGamepadProductId;
+        if (lorieConnectionAlive() && lorieGamepadHasRumble) {
             reply.capabilities = LORIE_CONTROLLER_CAP_RUMBLE |
                                  LORIE_CONTROLLER_CAP_TRIGGER_RUMBLE;
         }

@@ -42,6 +42,10 @@ from The Open Group.
 #define XI_ERASER	"TERMUX-X11 ERASER"
 
 __unused DeviceIntPtr lorieMouse, lorieTouch, lorieKeyboard, loriePen, lorieEraser, lorieGamepad;
+int32_t lorieGamepadAndroidId = -1;
+uint32_t lorieGamepadVendorId;
+uint32_t lorieGamepadProductId;
+Bool lorieGamepadHasRumble;
 
 void
 ProcessInputEvents(void) {
@@ -378,6 +382,49 @@ static int lorieGamepadProc(DeviceIntPtr device, int what) {
 #undef NAXES
 }
 
+void lorieUpdateGamepadDevice(Bool present, int32_t androidDeviceId,
+                              uint32_t vendorId, uint32_t productId,
+                              Bool hasRumble, const char *name) {
+    if (lorieGamepad) {
+        lorieResetGamepadState();
+        RemoveDevice(lorieGamepad, TRUE);
+        lorieGamepad = NULL;
+    }
+
+    lorieGamepadAndroidId = -1;
+    lorieGamepadVendorId = 0;
+    lorieGamepadProductId = 0;
+    lorieGamepadHasRumble = FALSE;
+    if (!present)
+        return;
+
+    lorieGamepad = AddInputDevice(serverClient, lorieGamepadProc, TRUE);
+    if (!lorieGamepad) {
+        __android_log_print(ANDROID_LOG_ERROR, "LorieNative",
+                            "Failed to add hotplug gamepad");
+        return;
+    }
+    AssignTypeAndName(lorieGamepad,
+                      MakeAtom("LORIE_GAMEPAD", sizeof("LORIE_GAMEPAD") - 1, TRUE),
+                      (name && *name) ? name : "Lorie gamepad");
+    lorieGamepad->coreEvents = FALSE;
+    if (ActivateDevice(lorieGamepad, FALSE) != Success ||
+        EnableDevice(lorieGamepad, TRUE) != Success) {
+        RemoveDevice(lorieGamepad, TRUE);
+        lorieGamepad = NULL;
+        return;
+    }
+    AttachDevice(NULL, lorieGamepad, NULL);
+    lorieGamepadAndroidId = androidDeviceId;
+    lorieGamepadVendorId = vendorId;
+    lorieGamepadProductId = productId;
+    lorieGamepadHasRumble = hasRumble;
+    __android_log_print(ANDROID_LOG_INFO, "LorieNative",
+                        "Gamepad added: android=%d vid=%04x pid=%04x name=%s",
+                        androidDeviceId, vendorId, productId,
+                        (name && *name) ? name : "Lorie gamepad");
+}
+
 
 
 
@@ -385,9 +432,9 @@ void InitInput(__unused int argc, __unused char *argv[]) {
     lorieMouse = AddInputDevice(serverClient, lorieMouseProc, TRUE);
     lorieTouch = AddInputDevice(serverClient, lorieTouchProc, TRUE);
     lorieKeyboard = AddInputDevice(serverClient, lorieKeybdProc, TRUE);
-    lorieGamepad = AddInputDevice(serverClient, lorieGamepadProc, TRUE);
+    lorieGamepad = NULL;
 
-    if (!lorieMouse || !lorieTouch || !lorieKeyboard || !lorieGamepad) {
+    if (!lorieMouse || !lorieTouch || !lorieKeyboard) {
         __android_log_print(ANDROID_LOG_ERROR, "LorieNative", "Failed to initialize input devices.");
         return;
     }
@@ -395,28 +442,23 @@ void InitInput(__unused int argc, __unused char *argv[]) {
     AssignTypeAndName(lorieMouse, MakeAtom(XI_MOUSE, sizeof(XI_MOUSE) - 1, TRUE), "Lorie mouse");
     AssignTypeAndName(lorieTouch, MakeAtom(XI_TOUCHSCREEN, sizeof(XI_TOUCHSCREEN) - 1, TRUE), "Lorie touch");
     AssignTypeAndName(lorieKeyboard, MakeAtom(XI_KEYBOARD, sizeof(XI_KEYBOARD) - 1, TRUE), "Lorie keyboard");
-    AssignTypeAndName(lorieGamepad, MakeAtom("LORIE_GAMEPAD", sizeof("LORIE_GAMEPAD") - 1, TRUE), "Lorie gamepad");
 
     /* EnableDevice() automatically attaches pointer devices with coreEvents
      * enabled to the virtual core pointer.  A gamepad must stay outside that
      * hierarchy: XI2 clients can still consume its device/raw events, while
      * sticks and face buttons cannot move or click the desktop. */
-    lorieGamepad->coreEvents = FALSE;
 
     ActivateDevice(lorieMouse, FALSE);
     ActivateDevice(lorieTouch, FALSE);
     ActivateDevice(lorieKeyboard, FALSE);
-    ActivateDevice(lorieGamepad, FALSE);
 
     EnableDevice(lorieMouse, TRUE);
     EnableDevice(lorieTouch, TRUE);
     EnableDevice(lorieKeyboard, TRUE);
-    EnableDevice(lorieGamepad, TRUE);
 
     AttachDevice(NULL, lorieMouse, inputInfo.pointer);
     AttachDevice(NULL, lorieTouch, inputInfo.pointer);
     AttachDevice(NULL, lorieKeyboard, inputInfo.keyboard);
-    AttachDevice(NULL, lorieGamepad, NULL);
 
     (void) mieqInit();
 }

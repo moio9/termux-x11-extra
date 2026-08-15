@@ -470,6 +470,25 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, __unused void *reserved) {
                     .axisID = (uint8_t) axisID
                 });
             }},
+            {"sendGamepadDevice", "(JIZIIZLjava/lang/String;)V", (void *) +[](JNIEnv *env, __unused jobject thiz, jlong ptr, jint deviceId, jboolean present, jint vendorId, jint productId, jboolean hasRumble, jstring jname) {
+                auto *r = (LorieViewResources *)ptr;
+                const char *utf_name = jname ? env->GetStringUTFChars(jname, nullptr) : nullptr;
+                const char *name = utf_name ? utf_name : "";
+                size_t name_size = strlen(name);
+                if (name_size > UINT16_MAX) name_size = UINT16_MAX;
+                sendEvent(r, .gamepadDevice = {
+                    .t = EVENT_GAMEPAD_DEVICE,
+                    .present = (uint8_t)present,
+                    .hasRumble = (uint8_t)hasRumble,
+                    .androidDeviceId = (int32_t)deviceId,
+                    .vendorId = (uint32_t)vendorId,
+                    .productId = (uint32_t)productId,
+                    .nameSize = (uint16_t)name_size,
+                });
+                if (r && r->connFd != -1 && name_size)
+                    write(r->connFd, name, name_size);
+                if (utf_name) env->ReleaseStringUTFChars(jname, utf_name);
+            }},
             {"sendLockKeysState", "(JI)V", (void *) +[](__unused JNIEnv *env, __unused jobject thiz, jlong ptr, jint state) {
                 auto* r = (LorieViewResources*) ptr;
                 sendEvent(r, .lockKeysState = { .t = EVENT_LOCK_KEYS_STATE, .state = (uint8_t) state });

@@ -36,6 +36,14 @@ void lorieSyncLockKeysState(uint8_t state);
 void LorieControllerExtensionInit(void);
 void lorieSetControllerRumble(uint8_t effect, uint16_t low, uint16_t high,
                               uint32_t durationMs);
+void lorieUpdateGamepadDevice(Bool present, int32_t androidDeviceId,
+                              uint32_t vendorId, uint32_t productId,
+                              Bool hasRumble, const char *name);
+void lorieResetGamepadState(void);
+extern int32_t lorieGamepadAndroidId;
+extern uint32_t lorieGamepadVendorId;
+extern uint32_t lorieGamepadProductId;
+extern Bool lorieGamepadHasRumble;
 void lorieWakeServer(void);
 void lorieRecheckGpuCopies(void);
 void lorieChoreographerFrameCallback(__unused long t, AChoreographer* d);
@@ -113,6 +121,7 @@ typedef enum {
     EVENT_GPU_COPY_DONE,
     EVENT_LOCK_KEYS_STATE,
     EVENT_GAMEPAD_RUMBLE,
+    EVENT_GAMEPAD_DEVICE,
 } eventType;
 
 typedef union {
@@ -172,6 +181,17 @@ typedef union {
         uint16_t high;
         uint32_t durationMs;
     } gamepadRumble;
+    struct {
+        uint8_t t;
+        uint8_t present;
+        uint8_t hasRumble;
+        uint8_t pad0;
+        int32_t androidDeviceId;
+        uint32_t vendorId;
+        uint32_t productId;
+        uint16_t nameSize;
+        uint16_t pad1;
+    } gamepadDevice;
     struct {
         uint8_t t;
         uint32_t code;

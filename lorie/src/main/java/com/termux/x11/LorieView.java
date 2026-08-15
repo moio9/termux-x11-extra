@@ -736,6 +736,15 @@ public class LorieView extends SurfaceView implements InputStub {
     }
     @FastNative private native void sendGamepadEvent(long ptr, int button, boolean pressed, float axisX, float axisY, int axisID);
 
+    public void sendGamepadDevice(int deviceId, boolean present, int vendorId,
+                                  int productId, boolean hasRumble, String name) {
+        sendGamepadDevice(mNativeContext, deviceId, present, vendorId,
+                          productId, hasRumble, name);
+    }
+    @FastNative private native void sendGamepadDevice(long ptr, int deviceId,
+            boolean present, int vendorId, int productId, boolean hasRumble,
+            String name);
+
     public void sendLockKeysState(int state) { sendLockKeysState(mNativeContext, state); }
     @FastNative private native void sendLockKeysState(long ptr, int state);
 

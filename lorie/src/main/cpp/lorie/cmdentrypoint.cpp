@@ -246,6 +246,11 @@ static Bool handleTouchEvent(__unused ClientPtr pClient, void *closure) {
 static uint32_t gamepad_direct_buttons;
 static uint32_t gamepad_hat_buttons;
 
+extern "C" void lorieResetGamepadState(void) {
+    gamepad_direct_buttons = 0;
+    gamepad_hat_buttons = 0;
+}
+
 static void queueGamepadButton(unsigned int button, Bool pressed) {
     uint32_t bit, old_buttons, new_buttons;
 
@@ -450,6 +455,31 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
                 else
                     queueGamepadAxes(&e);
                 break;
+            case EVENT_GAMEPAD_DEVICE: {
+                const size_t name_size = e.gamepadDevice.nameSize;
+                auto *copy = (lorieEvent*) calloc(1, sizeof(lorieEvent) + name_size + 1);
+                memcpy(copy, &e, sizeof(e));
+                char *name = (char *)(copy + 1);
+                if (name_size && read(fd, name, name_size) != (ssize_t)name_size) {
+                    free(copy);
+                    break;
+                }
+                name[name_size] = 0;
+                QueueWorkProc(+[](__unused ClientPtr client, void *closure) -> Bool {
+                    auto *event = (lorieEvent *)closure;
+                    const char *device_name = (const char *)(event + 1);
+                    lorieUpdateGamepadDevice(event->gamepadDevice.present,
+                                             event->gamepadDevice.androidDeviceId,
+                                             event->gamepadDevice.vendorId,
+                                             event->gamepadDevice.productId,
+                                             event->gamepadDevice.hasRumble,
+                                             device_name);
+                    free(event);
+                    return TRUE;
+                }, nullptr, copy);
+                lorieWakeServer();
+                break;
+            }
             case EVENT_UNICODE: {
                 int ks = ucs2keysym((long) e.unicode.code);
                 __android_log_print(ANDROID_LOG_DEBUG, "LorieNative", "Trying to input keysym %d\n", ks);
