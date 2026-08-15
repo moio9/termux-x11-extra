@@ -27,6 +27,7 @@ public class GamepadInputHandler {
     private static final int INPUT_XINPUT = 1;
     private static final int INPUT_DINPUT = 2;
     private static final int INPUT_XDINPUT = 3;
+    private static final int FALLBACK_DEVICE_ID = Integer.MIN_VALUE;
     // ---- RUMBLE state ----
     private final android.os.Handler rumbleHandler =
             new android.os.Handler(android.os.Looper.getMainLooper());
@@ -231,7 +232,11 @@ public class GamepadInputHandler {
     private void onDeviceChanged(int deviceId) {
         InputDevice device = InputDevice.getDevice(deviceId);
         if (isGamepadDevice(device) &&
-                (advertisedDeviceId == -1 || advertisedDeviceId == deviceId)) {
+                (advertisedDeviceId == -1 ||
+                 advertisedDeviceId == FALLBACK_DEVICE_ID ||
+                 advertisedDeviceId == deviceId)) {
+            if (advertisedDeviceId == FALLBACK_DEVICE_ID)
+                advertiseRemoved(FALLBACK_DEVICE_ID);
             advertiseDevice(device);
         }
         if (deviceId == lastGamepadDeviceId || lastGamepadDeviceId == -1) {
@@ -267,6 +272,16 @@ public class GamepadInputHandler {
         advertisedDeviceId = -1;
     }
 
+    private void advertiseFallback() {
+        if (lorieView == null || !forwardToLorie) return;
+        advertisedDeviceId = FALLBACK_DEVICE_ID;
+        String name = advertisedName.isEmpty() ? "Lorie gamepad" : advertisedName;
+        lorieView.sendGamepadDevice(FALLBACK_DEVICE_ID, true, 0, 0, inputMode,
+                true, name);
+        Log.i(TAG, "advertise virtual fallback mode=" + inputMode +
+                " name=" + name);
+    }
+
     public void shutdown() {
         if (advertisedDeviceId != -1) advertiseRemoved(advertisedDeviceId);
         try { inputManager.unregisterInputDeviceListener(inputDeviceListener); }
@@ -295,6 +310,7 @@ public class GamepadInputHandler {
         } catch (Throwable t) {
             Log.w(TAG, "Unable to enumerate gamepads", t);
         }
+        advertiseFallback();
     }
 
     private void ensureAdvertised(InputDevice device) {
