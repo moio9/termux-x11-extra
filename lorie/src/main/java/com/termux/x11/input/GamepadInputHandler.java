@@ -166,7 +166,10 @@ public class GamepadInputHandler {
             int deviceId = advertisedDeviceId;
             InputDevice device = InputDevice.getDevice(deviceId);
             advertiseRemoved(deviceId);
-            if (device != null) advertiseDevice(device);
+            if (device != null && isGamepadDevice(device))
+                advertiseDevice(device);
+            else
+                advertiseFirstGamepad();
         }
     }
     private int bitForKey(int keyCode) {
