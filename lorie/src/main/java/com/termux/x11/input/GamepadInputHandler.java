@@ -274,6 +274,14 @@ public class GamepadInputHandler {
         io.shutdownNow();
     }
 
+    public void resyncToLorie() {
+        if (!forwardToLorie) return;
+        /* An announcement sent while the private X-server socket was down is
+         * intentionally not queued. Re-enumerate after every new connection. */
+        advertisedDeviceId = -1;
+        advertiseFirstGamepad();
+    }
+
     private void advertiseFirstGamepad() {
         try {
             for (int id : inputManager.getInputDeviceIds()) {

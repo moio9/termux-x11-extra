@@ -1483,6 +1483,7 @@ public class MainActivity extends AppCompatActivity {
                 refreshLoadedPreset(false);
             } else{
                 getLorieView().setPointerIcon(PointerIcon.getSystemIcon(this, PointerIcon.TYPE_NULL));
+                if (gamepadHandler != null) gamepadHandler.resyncToLorie();
                 refreshLoadedPreset(false);
                 isPresetLoaded = true;
             }
