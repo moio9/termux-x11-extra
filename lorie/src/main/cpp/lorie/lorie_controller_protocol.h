@@ -6,7 +6,7 @@
 #define LORIE_CONTROLLER_NAME "LORIE-CONTROLLER"
 
 #define LORIE_CONTROLLER_MAJOR_VERSION 1
-#define LORIE_CONTROLLER_MINOR_VERSION 1
+#define LORIE_CONTROLLER_MINOR_VERSION 2
 
 #define X_LorieControllerQueryVersion      0
 #define X_LorieControllerQueryCapabilities 1
@@ -21,6 +21,11 @@
 #define LORIE_CONTROLLER_EFFECT_TRIGGERS 1
 
 #define LORIE_CONTROLLER_MAPPING_STANDARD 1
+
+#define LORIE_CONTROLLER_INPUT_NONE    0
+#define LORIE_CONTROLLER_INPUT_XINPUT  1
+#define LORIE_CONTROLLER_INPUT_DINPUT  2
+#define LORIE_CONTROLLER_INPUT_XDINPUT 3
 
 typedef struct {
     CARD8 reqType;
@@ -65,7 +70,8 @@ typedef struct {
     CARD32 mapping;
     CARD32 vendorId;
     CARD32 productId;
-    CARD32 pad1;
+    CARD8 inputMode;
+    CARD8 pad1[3];
 } xLorieControllerQueryCapabilitiesReply;
 #define sz_xLorieControllerQueryCapabilitiesReply 32
 

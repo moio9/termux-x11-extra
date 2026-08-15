@@ -38,11 +38,13 @@ void lorieSetControllerRumble(uint8_t effect, uint16_t low, uint16_t high,
                               uint32_t durationMs);
 void lorieUpdateGamepadDevice(Bool present, int32_t androidDeviceId,
                               uint32_t vendorId, uint32_t productId,
-                              Bool hasRumble, const char *name);
+                              uint8_t inputMode, Bool hasRumble,
+                              const char *name);
 void lorieResetGamepadState(void);
 extern int32_t lorieGamepadAndroidId;
 extern uint32_t lorieGamepadVendorId;
 extern uint32_t lorieGamepadProductId;
+extern uint8_t lorieGamepadInputMode;
 extern Bool lorieGamepadHasRumble;
 void lorieWakeServer(void);
 void lorieRecheckGpuCopies(void);
@@ -185,7 +187,7 @@ typedef union {
         uint8_t t;
         uint8_t present;
         uint8_t hasRumble;
-        uint8_t pad0;
+        uint8_t inputMode;
         int32_t androidDeviceId;
         uint32_t vendorId;
         uint32_t productId;

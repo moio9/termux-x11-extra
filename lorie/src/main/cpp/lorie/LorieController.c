@@ -71,6 +71,7 @@ ProcLorieControllerQueryCapabilities(ClientPtr client)
         reply.mapping = LORIE_CONTROLLER_MAPPING_STANDARD;
         reply.vendorId = lorieGamepadVendorId;
         reply.productId = lorieGamepadProductId;
+        reply.inputMode = lorieGamepadInputMode;
         if (lorieConnectionAlive() && lorieGamepadHasRumble) {
             reply.capabilities = LORIE_CONTROLLER_CAP_RUMBLE |
                                  LORIE_CONTROLLER_CAP_TRIGGER_RUMBLE;
@@ -85,7 +86,6 @@ ProcLorieControllerQueryCapabilities(ClientPtr client)
         swapl(&reply.mapping);
         swapl(&reply.vendorId);
         swapl(&reply.productId);
-        swapl(&reply.pad1);
     }
     WriteToClient(client, sizeof(reply), &reply);
     return Success;

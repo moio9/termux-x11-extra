@@ -470,7 +470,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, __unused void *reserved) {
                     .axisID = (uint8_t) axisID
                 });
             }},
-            {"sendGamepadDevice", "(JIZIIZLjava/lang/String;)V", (void *) +[](JNIEnv *env, __unused jobject thiz, jlong ptr, jint deviceId, jboolean present, jint vendorId, jint productId, jboolean hasRumble, jstring jname) {
+            {"sendGamepadDevice", "(JIZIIIZLjava/lang/String;)V", (void *) +[](JNIEnv *env, __unused jobject thiz, jlong ptr, jint deviceId, jboolean present, jint vendorId, jint productId, jint inputMode, jboolean hasRumble, jstring jname) {
                 auto *r = (LorieViewResources *)ptr;
                 const char *utf_name = jname ? env->GetStringUTFChars(jname, nullptr) : nullptr;
                 const char *name = utf_name ? utf_name : "";
@@ -480,6 +480,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, __unused void *reserved) {
                     .t = EVENT_GAMEPAD_DEVICE,
                     .present = (uint8_t)present,
                     .hasRumble = (uint8_t)hasRumble,
+                    .inputMode = (uint8_t)inputMode,
                     .androidDeviceId = (int32_t)deviceId,
                     .vendorId = (uint32_t)vendorId,
                     .productId = (uint32_t)productId,

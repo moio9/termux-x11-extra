@@ -472,6 +472,7 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
                                              event->gamepadDevice.androidDeviceId,
                                              event->gamepadDevice.vendorId,
                                              event->gamepadDevice.productId,
+                                             event->gamepadDevice.inputMode,
                                              event->gamepadDevice.hasRumble,
                                              device_name);
                     free(event);

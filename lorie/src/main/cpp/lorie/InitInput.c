@@ -37,6 +37,7 @@ from The Open Group.
 #include "xserver-properties.h"
 #include "exevents.h"
 #include "lorie.h"
+#include "lorie_controller_protocol.h"
 
 #define XI_PEN	"TERMUX-X11 PEN"
 #define XI_ERASER	"TERMUX-X11 ERASER"
@@ -45,6 +46,7 @@ __unused DeviceIntPtr lorieMouse, lorieTouch, lorieKeyboard, loriePen, lorieEras
 int32_t lorieGamepadAndroidId = -1;
 uint32_t lorieGamepadVendorId;
 uint32_t lorieGamepadProductId;
+uint8_t lorieGamepadInputMode = LORIE_CONTROLLER_INPUT_XINPUT;
 Bool lorieGamepadHasRumble;
 
 void
@@ -384,7 +386,8 @@ static int lorieGamepadProc(DeviceIntPtr device, int what) {
 
 void lorieUpdateGamepadDevice(Bool present, int32_t androidDeviceId,
                               uint32_t vendorId, uint32_t productId,
-                              Bool hasRumble, const char *name) {
+                              uint8_t inputMode, Bool hasRumble,
+                              const char *name) {
     if (lorieGamepad) {
         lorieResetGamepadState();
         RemoveDevice(lorieGamepad, TRUE);
@@ -394,6 +397,7 @@ void lorieUpdateGamepadDevice(Bool present, int32_t androidDeviceId,
     lorieGamepadAndroidId = -1;
     lorieGamepadVendorId = 0;
     lorieGamepadProductId = 0;
+    lorieGamepadInputMode = LORIE_CONTROLLER_INPUT_XINPUT;
     lorieGamepadHasRumble = FALSE;
     if (!present)
         return;
@@ -418,10 +422,13 @@ void lorieUpdateGamepadDevice(Bool present, int32_t androidDeviceId,
     lorieGamepadAndroidId = androidDeviceId;
     lorieGamepadVendorId = vendorId;
     lorieGamepadProductId = productId;
+    lorieGamepadInputMode = inputMode <= LORIE_CONTROLLER_INPUT_XDINPUT ?
+                            inputMode : LORIE_CONTROLLER_INPUT_XINPUT;
     lorieGamepadHasRumble = hasRumble;
     __android_log_print(ANDROID_LOG_INFO, "LorieNative",
-                        "Gamepad added: android=%d vid=%04x pid=%04x name=%s",
+                        "Gamepad added: android=%d vid=%04x pid=%04x mode=%u name=%s",
                         androidDeviceId, vendorId, productId,
+                        lorieGamepadInputMode,
                         (name && *name) ? name : "Lorie gamepad");
 }
 

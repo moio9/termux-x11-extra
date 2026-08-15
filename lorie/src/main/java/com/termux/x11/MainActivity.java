@@ -520,6 +520,7 @@ public class MainActivity extends AppCompatActivity {
         ipc.setName(currGpName);
         ipc.start();
 
+        if (gamepadHandler != null) gamepadHandler.shutdown();
         gamepadHandler = new GamepadInputHandler(this, lorieView, ipc, gpState, prefs.gamepadForwardX11.get());
         gamepadHandler.reloadPrefs(prefs);
         gamepadHandler.setupGamepadInput();
@@ -640,6 +641,7 @@ public class MainActivity extends AppCompatActivity {
         if (instance == this)
             instance = null;
         super.onDestroy();
+        try { if (gamepadHandler != null) gamepadHandler.shutdown(); } catch (Throwable ignored) {}
         try { if (ipc != null) { ipc.sendRelease(); ipc.stop(); } } catch (Throwable ignored) {}
     }
 

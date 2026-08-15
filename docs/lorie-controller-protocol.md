@@ -1,4 +1,4 @@
-# LORIE-CONTROLLER X11 extension 1.0
+# LORIE-CONTROLLER X11 extension 1.2
 
 `LORIE-CONTROLLER` is a companion to XInput2. XI2 remains the only event path
 for controller axes and buttons; this extension supplies discovery metadata
@@ -12,14 +12,19 @@ normal X errors.
 ## Requests
 
 Minor opcode 0, `QueryVersion`, takes 16-bit client major/minor values and
-returns the negotiated 16-bit version. Version 1.0 is the current protocol.
+returns the negotiated 16-bit version. Version 1.2 is the current protocol.
 
 Minor opcode 1, `QueryCapabilities`, takes a 16-bit XI2 device ID. Its 32-byte
 reply includes the device ID, a present flag, axis/button/hat counts, the
-standard mapping identifier, vendor/product IDs and this capability mask:
+standard mapping identifier, vendor/product IDs, the configured input mode and
+this capability mask:
 
 - bit 0: main rumble;
 - bit 1: trigger rumble.
+
+The input mode byte is 0 for none, 1 for XInput, 2 for DirectInput, and 3 for
+the combined XDInput setting. Changing the mode or configured controller name
+recreates the XI2 device so clients receive a standard hierarchy hotplug cycle.
 
 Minor opcode 2, `Rumble`, takes the XI2 device ID, an effect selector, two
 unsigned 16-bit magnitudes and a 32-bit duration in milliseconds. Effect 0 is
@@ -30,7 +35,8 @@ feedback.
 
 ## Server-to-Android path
 
-The extension validates that the supplied XI2 ID belongs to `Lorie gamepad`.
+The extension validates that the supplied XI2 ID belongs to the active Lorie
+controller, whose XI2 name may be configured by the user.
 It then writes an `EVENT_GAMEPAD_RUMBLE` message to the private socket already
 shared by the X server and Android `LorieView`. The Android activity dispatches
 that message to `GamepadInputHandler`; no public network listener is involved.
