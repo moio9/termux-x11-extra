@@ -388,6 +388,9 @@ void lorieUpdateGamepadDevice(Bool present, int32_t androidDeviceId,
                               uint32_t vendorId, uint32_t productId,
                               uint8_t inputMode, Bool hasRumble,
                               const char *name) {
+    int activateResult;
+    int enableResult;
+
     if (!present && (!lorieGamepad || lorieGamepadAndroidId == -1 ||
                      androidDeviceId != lorieGamepadAndroidId)) {
         __android_log_print(ANDROID_LOG_INFO, "LorieNative",
@@ -420,8 +423,13 @@ void lorieUpdateGamepadDevice(Bool present, int32_t androidDeviceId,
                       MakeAtom("LORIE_GAMEPAD", sizeof("LORIE_GAMEPAD") - 1, TRUE),
                       (name && *name) ? name : "Lorie gamepad");
     lorieGamepad->coreEvents = FALSE;
-    if (ActivateDevice(lorieGamepad, FALSE) != Success ||
-        EnableDevice(lorieGamepad, TRUE) != Success) {
+    activateResult = ActivateDevice(lorieGamepad, FALSE);
+    enableResult = activateResult == Success ?
+                   EnableDevice(lorieGamepad, TRUE) : BadImplementation;
+    if (activateResult != Success || enableResult != Success) {
+        __android_log_print(ANDROID_LOG_ERROR, "LorieNative",
+                            "Failed to activate hotplug gamepad: activate=%d enable=%d",
+                            activateResult, enableResult);
         RemoveDevice(lorieGamepad, TRUE);
         lorieGamepad = NULL;
         return;
@@ -444,6 +452,9 @@ void lorieUpdateGamepadDevice(Bool present, int32_t androidDeviceId,
 
 
 void InitInput(__unused int argc, __unused char *argv[]) {
+    int gamepadActivateResult;
+    int gamepadEnableResult;
+
     lorieMouse = AddInputDevice(serverClient, lorieMouseProc, TRUE);
     lorieTouch = AddInputDevice(serverClient, lorieTouchProc, TRUE);
     lorieKeyboard = AddInputDevice(serverClient, lorieKeybdProc, TRUE);
@@ -477,17 +488,26 @@ void InitInput(__unused int argc, __unused char *argv[]) {
     ActivateDevice(lorieMouse, FALSE);
     ActivateDevice(lorieTouch, FALSE);
     ActivateDevice(lorieKeyboard, FALSE);
-    ActivateDevice(lorieGamepad, FALSE);
+    gamepadActivateResult = ActivateDevice(lorieGamepad, FALSE);
 
     EnableDevice(lorieMouse, TRUE);
     EnableDevice(lorieTouch, TRUE);
     EnableDevice(lorieKeyboard, TRUE);
-    EnableDevice(lorieGamepad, TRUE);
+    gamepadEnableResult = gamepadActivateResult == Success ?
+                          EnableDevice(lorieGamepad, TRUE) : BadImplementation;
 
     AttachDevice(NULL, lorieMouse, inputInfo.pointer);
     AttachDevice(NULL, lorieTouch, inputInfo.pointer);
     AttachDevice(NULL, lorieKeyboard, inputInfo.keyboard);
     AttachDevice(NULL, lorieGamepad, NULL);
+
+    __android_log_print(gamepadActivateResult == Success &&
+                        gamepadEnableResult == Success ?
+                        ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
+                        "LorieNative",
+                        "Startup gamepad: id=%d activate=%d enable=%d on=%d",
+                        lorieGamepad->id, gamepadActivateResult,
+                        gamepadEnableResult, lorieGamepad->public.on);
 
     (void) mieqInit();
 }

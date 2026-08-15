@@ -976,6 +976,12 @@ public class MainActivity extends AppCompatActivity {
         LorieView lv = getLorieView();
         if (lv == null) return;
 
+        /* The command-line preference helper writes through the companion
+         * provider, so refresh the display-specific backing store before the
+         * gamepad reload reads it.  The delayed UI refresh below is too late
+         * and otherwise makes runtime profile changes lag one event behind. */
+        prefs.recheckStoringSecondaryDisplayPreferences();
+
         handler.removeCallbacks(this::onPreferencesChangedCallback);
         handler.postDelayed(this::onPreferencesChangedCallback, 100);
         handler.post(() -> maybeReloadGamepad(lv));
