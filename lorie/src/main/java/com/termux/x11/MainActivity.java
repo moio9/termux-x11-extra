@@ -553,6 +553,40 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        /*
+         * Controller key-up events do not reliably pass through
+         * LorieView.dispatchKeyEventPreIme(). Handle the complete controller
+         * key stream here, before the focused view/IME gets a chance to split
+         * the down and up events across different dispatch paths.
+         */
+        final InputDevice dev = e.getDevice();
+        final int src = (dev != null) ? dev.getSources() : e.getSource();
+        final boolean hasKb = (src & InputDevice.SOURCE_KEYBOARD) != 0;
+        final boolean hasGp =
+                (src & (InputDevice.SOURCE_GAMEPAD | InputDevice.SOURCE_JOYSTICK)) != 0;
+        final boolean hasDpad = (src & InputDevice.SOURCE_DPAD) != 0;
+        final int keyCode = e.getKeyCode();
+        final boolean isDpadKey =
+                keyCode == KeyEvent.KEYCODE_DPAD_UP
+                        || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                        || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                        || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                        || keyCode == KeyEvent.KEYCODE_DPAD_CENTER;
+        final boolean fromController =
+                (KeyEvent.isGamepadButton(keyCode) && (hasGp || hasDpad))
+                        || (isDpadKey && !hasKb && (hasGp || hasDpad));
+
+        if (fromController && gamepadHandler != null) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (e.getRepeatCount() == 0)
+                    gamepadHandler.handleKeyDown(keyCode, e);
+                return true;
+            }
+            if (e.getAction() == KeyEvent.ACTION_UP) {
+                gamepadHandler.handleKeyUp(keyCode, e);
+                return true;
+            }
+        }
         return super.dispatchKeyEvent(e);
     }
 
