@@ -94,6 +94,7 @@ import java.util.Objects;
 @Keep @SuppressLint("ApplySharedPref")
 @SuppressWarnings({"deprecation", "unused"})
 public class MainActivity extends AppCompatActivity {
+    private final com.termux.x11.audio.PulseAudioPlayback audioPlayback = new com.termux.x11.audio.PulseAudioPlayback();
     private GamepadIpc ipc;
     private final GamepadIpc.GamepadState gpState = new GamepadIpc.GamepadState().neutral();
 
@@ -641,6 +642,8 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        audioPlayback.setEnabled(false);
+        prefs.get().unregisterOnSharedPreferenceChangeListener(preferencesChangedListener);
         handler.removeCallbacks(screenIdleTimeoutCheck);
         if (instance == this)
             instance = null;
@@ -993,7 +996,9 @@ public class MainActivity extends AppCompatActivity {
 
     @SuppressLint("UnsafeIntentLaunch")
     void onPreferencesChangedCallback() {
+        if (isDestroyed()) return;
         prefs.recheckStoringSecondaryDisplayPreferences();
+        audioPlayback.setEnabled(prefs.audioPlaybackEnabled.get());
 
         // There is no way back to the normal size from picture-in-picture, so the window is closed.
         if (isInPictureInPictureMode && !prefs.PIP.get()) {

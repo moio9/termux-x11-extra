@@ -12,6 +12,7 @@
 
     <application
         android:allowBackup="false"
+        android:allowAudioPlaybackCapture="true"
         tools:ignore="DataExtractionRules,GoogleAppIndexingWarning">
         <activity android:name=".VirtualKeyMapperActivity" />
 

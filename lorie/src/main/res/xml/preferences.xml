@@ -7,9 +7,18 @@
         <Preference app:title="@string/lorie_pref_output"  app:fragment="output" />
         <Preference app:title="@string/lorie_pref_pointer" app:fragment="pointer" />
         <Preference app:title="@string/lorie_pref_kbd"     app:fragment="kbd" />
+        <Preference app:title="Audio" app:fragment="audio" />
         <Preference app:title="Controller"           app:fragment="controller" />
         <Preference app:title="@string/lorie_pref_other"   app:fragment="other" />
         <Preference app:key="version" app:title="@string/lorie_pref_version" />
+    </PreferenceScreen>
+
+    <PreferenceScreen app:key="audio" app:title="Audio">
+        <SwitchPreferenceCompat
+            app:key="audioPlaybackEnabled"
+            app:defaultValue="false"
+            app:title="Play audio through Termux:X11"
+            app:summary="Experimental. Allows screen recorders to capture game audio. Requires the Termux audio helper." />
     </PreferenceScreen>
 
     <!-- OUTPUT -->
