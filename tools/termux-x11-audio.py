@@ -25,7 +25,7 @@ def listing(kind):
     # PulseAudio 17 omits module IDs from its JSON output.
     if kind == 'modules':
         rows = (line.split('\t') for line in pactl('list', 'short', 'modules').splitlines())
-        return [{'index': int(row[0]), 'name': row[1], 'argument': row[2]} for row in rows]
+        return [{'index': int(row[0]), 'name': row[1], 'argument': row[2] if len(row) > 2 else ''} for row in rows]
     return json.loads(pactl('--format=json', 'list', kind))
 
 
