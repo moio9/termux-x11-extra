@@ -20,7 +20,9 @@ import com.termux.x11.ipc.GamepadIpc;
 import com.termux.x11.input.GamepadInputHandler;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class VirtualKeyHandler {
     private final Context context;
@@ -188,6 +190,33 @@ public class VirtualKeyHandler {
             }
             return true;
         });
+    }
+
+    /** Release every touch/toggle before controls are hidden or replaced. */
+    public void releaseAllButtons(ViewGroup parent) {
+        Set<View> pressed = new HashSet<>();
+        for (int i = 0; i < activeButtons.size(); i++) pressed.add(activeButtons.valueAt(i));
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            View child = parent.getChildAt(i);
+            if (child instanceof Button && child.isSelected()) pressed.add(child);
+        }
+        for (View button : pressed) {
+            handleButtonRelease(lorieView, 0, button);
+            String tag = (String) button.getTag();
+            if (gamepadHandler != null) {
+                if ("Gamepad_LS".equals(tag))
+                    gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.LEFT_STICK, 0f, 0f);
+                if ("Gamepad_RS".equals(tag))
+                    gamepadHandler.setAxis(GamepadInputHandler.GamepadAxis.RIGHT_STICK, 0f, 0f);
+            }
+            if (button.isSelected()) {
+                updateToggleVisual((Button) button, true);
+                button.setSelected(false);
+            }
+        }
+        activeButtons.clear();
+        isMouseTrackingActive = false;
+        lastTouchX = lastTouchY = -1;
     }
 
     private void handleButtonPress(LorieView lorieView, int pointerId, View button) {

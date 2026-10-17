@@ -9,6 +9,7 @@
         <Preference app:title="@string/lorie_pref_kbd"     app:fragment="kbd" />
         <Preference app:title="Audio" app:fragment="audio" />
         <Preference app:title="Controller"           app:fragment="controller" />
+        <Preference app:title="Touch Controls" app:fragment="touchControls" />
         <Preference app:title="@string/lorie_pref_other"   app:fragment="other" />
         <Preference app:key="version" app:title="@string/lorie_pref_version" />
     </PreferenceScreen>
@@ -19,6 +20,18 @@
             app:defaultValue="false"
             app:title="Play audio through Termux:X11"
             app:summary="Experimental. Allows screen recorders to capture game audio. Requires the Termux audio helper." />
+    </PreferenceScreen>
+
+    <PreferenceScreen app:key="touchControls" app:title="Touch Controls">
+        <SwitchPreferenceCompat app:key="hideTouchControlsWithController" app:defaultValue="false"
+            app:title="Hide buttons with a controller"
+            app:summary="Hide the virtual button layout while a physical gamepad is connected. Restore it after disconnection." />
+        <SwitchPreferenceCompat app:key="hideTouchControlsWithKeyboardMouse" app:defaultValue="false"
+            app:title="Hide buttons with keyboard and mouse"
+            app:summary="Requires both an external alphabetic keyboard and a mouse or touchpad. Restore the layout when either disconnects." />
+        <SwitchPreferenceCompat app:key="hideTouchControlsWithExternalDisplay" app:defaultValue="false"
+            app:title="Hide buttons with an external display"
+            app:summary="Hide the virtual button layout while a presentation display is connected. Any enabled condition keeps the buttons hidden." />
     </PreferenceScreen>
 
     <!-- OUTPUT -->

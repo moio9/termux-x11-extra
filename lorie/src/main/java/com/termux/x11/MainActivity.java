@@ -84,9 +84,11 @@ import com.termux.x11.ipc.GamepadIpc;
 import com.termux.x11.utils.ImeHeightProvider;
 import com.termux.x11.utils.KeyInterceptor;
 import com.termux.x11.utils.TermuxX11ExtraKeys;
+import com.termux.x11.utils.TouchControlsAutoHide;
 import com.termux.x11.utils.X11ToolbarViewPager;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -169,6 +171,9 @@ public class MainActivity extends AppCompatActivity {
     private static boolean oldFullscreen = false, oldHideCutout = false;
     private final SharedPreferences.OnSharedPreferenceChangeListener preferencesChangedListener = (__, key) -> onPreferencesChanged(key);
     private OrientationEventListener orientationListener;
+    private TouchControlsAutoHide touchControlsAutoHide;
+    private boolean touchControlsHidden;
+    private final Map<View, Integer> automaticallyHiddenControls = new IdentityHashMap<>();
 
     public void onBroadcastReceive(Context context, Intent intent) {
         prefs.recheckStoringSecondaryDisplayPreferences();
@@ -414,6 +419,9 @@ public class MainActivity extends AppCompatActivity {
 
         onPreferencesChangedCallback();
         maybeReloadGamepad(getLorieView());
+        touchControlsAutoHide = new TouchControlsAutoHide(this, this::updateTouchControlsVisibility);
+        touchControlsAutoHide.start(handler);
+        updateTouchControlsVisibility();
     }
 
     private void readConfigFromPrefs() {
@@ -608,6 +616,8 @@ public class MainActivity extends AppCompatActivity {
     public void refreshLoadedPreset(boolean forceLoad) {
         if (!isPresetLoaded || forceLoad){
             FrameLayout buttonLayer = findViewById(R.id.top);
+            if (virtualKeyHandler != null) virtualKeyHandler.releaseAllButtons(buttonLayer);
+            automaticallyHiddenControls.clear();
 
             List<View> toRemove = new ArrayList<>();
             for (int i = 0; i < buttonLayer.getChildCount(); i++) {
@@ -637,11 +647,41 @@ public class MainActivity extends AppCompatActivity {
                 }
 
             }
+            updateTouchControlsVisibility();
         }
+    }
+
+    private void updateTouchControlsVisibility() {
+        if (touchControlsAutoHide == null || prefs == null || isDestroyed()) return;
+        FrameLayout layer = findViewById(R.id.top);
+        if (layer == null) return;
+        boolean hide = touchControlsAutoHide.shouldHide(
+                prefs.hideTouchControlsWithController.get(),
+                prefs.hideTouchControlsWithKeyboardMouse.get(),
+                prefs.hideTouchControlsWithExternalDisplay.get());
+        if (hide) {
+            if (!touchControlsHidden && virtualKeyHandler != null)
+                virtualKeyHandler.releaseAllButtons(layer);
+            for (int i = 0; i < layer.getChildCount(); i++) {
+                View child = layer.getChildAt(i);
+                if (!(child instanceof Button)) continue;
+                if (!automaticallyHiddenControls.containsKey(child))
+                    automaticallyHiddenControls.put(child, child.getVisibility());
+                child.setVisibility(View.GONE);
+            }
+        } else {
+            for (Map.Entry<View, Integer> entry : automaticallyHiddenControls.entrySet())
+                if (entry.getKey().getParent() == layer)
+                    entry.getKey().setVisibility(entry.getValue());
+            automaticallyHiddenControls.clear();
+        }
+        touchControlsHidden = hide;
     }
 
     @Override
     protected void onDestroy() {
+        if (touchControlsAutoHide != null) touchControlsAutoHide.stop();
+        automaticallyHiddenControls.clear();
         audioPlayback.setEnabled(false);
         prefs.get().unregisterOnSharedPreferenceChangeListener(preferencesChangedListener);
         handler.removeCallbacks(screenIdleTimeoutCheck);
@@ -998,6 +1038,7 @@ public class MainActivity extends AppCompatActivity {
     void onPreferencesChangedCallback() {
         if (isDestroyed()) return;
         prefs.recheckStoringSecondaryDisplayPreferences();
+        updateTouchControlsVisibility();
         audioPlayback.setEnabled(prefs.audioPlaybackEnabled.get());
 
         // There is no way back to the normal size from picture-in-picture, so the window is closed.
@@ -1046,6 +1087,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onResume() {
         super.onResume();
+        updateTouchControlsVisibility();
 
         mNotification = buildNotification();
         mNotificationManager.notify(mNotificationId, mNotification);

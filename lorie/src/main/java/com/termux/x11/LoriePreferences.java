@@ -828,6 +828,12 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
                                 edit.putString(key, newValue);
                                 break;
                             }
+                            case "hideTouchControlsWithController":
+                            case "hideTouchControlsWithKeyboardMouse":
+                            case "hideTouchControlsWithExternalDisplay": {
+                                p.putBoolean(key, "true".equals(newValue));
+                                break;
+                            }
                             case "active_button_preset": {
                                 String presetName = intent.getStringExtra(key);
                                 if (presetName == null || presetName.isEmpty()) {
@@ -984,6 +990,14 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
     /** @noinspection unused*/
     @SuppressLint("ApplySharedPref")
     public static class PrefsProto extends PreferenceDataStore {
+        // Device connection policies follow the user between displays.
+        private static boolean isGlobalBoolean(String key) {
+            return "storeSecondaryDisplayPreferencesSeparately".equals(key)
+                    || "hideTouchControlsWithController".equals(key)
+                    || "hideTouchControlsWithKeyboardMouse".equals(key)
+                    || "hideTouchControlsWithExternalDisplay".equals(key);
+        }
+
         public static class Preference {
             protected final String key;
             protected final Class<?> type;
@@ -1017,13 +1031,17 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
             }
 
             public boolean get() {
-                if ("storeSecondaryDisplayPreferencesSeparately".contentEquals(key))
+                if (isGlobalBoolean(key))
                     return builtInDisplayPreferences.getBoolean(key, (boolean) defValue);
 
                 return preferences.getBoolean(key, (boolean) defValue);
             }
 
             public void put(boolean v) {
+                if (isGlobalBoolean(key) && !"storeSecondaryDisplayPreferencesSeparately".equals(key)) {
+                    builtInDisplayPreferences.edit().putBoolean(key, v).commit();
+                    return;
+                }
                 if ("storeSecondaryDisplayPreferencesSeparately".contentEquals(key)) {
                     builtInDisplayPreferences.edit().putBoolean(key, v).commit();
                     recheckStoringSecondaryDisplayPreferences();
@@ -1127,6 +1145,10 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
         }
 
         @Override public void putBoolean(String k, boolean v) {
+            if (isGlobalBoolean(k) && !"storeSecondaryDisplayPreferencesSeparately".equals(k)) {
+                builtInDisplayPreferences.edit().putBoolean(k, v).commit();
+                return;
+            }
             if ("storeSecondaryDisplayPreferencesSeparately".contentEquals(k)) {
                 builtInDisplayPreferences.edit().putBoolean(k, v).commit();
                 recheckStoringSecondaryDisplayPreferences();
@@ -1134,7 +1156,7 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
                 preferences.edit().putBoolean(k, v).commit();
         }
         @Override public boolean getBoolean(String k, boolean d) {
-            if ("storeSecondaryDisplayPreferencesSeparately".contentEquals(k))
+            if (isGlobalBoolean(k))
                 return builtInDisplayPreferences.getBoolean(k, d);
             return preferences.getBoolean(k, d);
         }
