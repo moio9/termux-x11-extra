@@ -12,6 +12,7 @@
 #include "swaprep.h"
 
 #include "lorie.h"
+#include "gamepad_device.h"
 #include "lorie_controller_protocol.h"
 
 extern DeviceIntPtr lorieGamepad;
@@ -63,16 +64,17 @@ ProcLorieControllerQueryCapabilities(ClientPtr client)
     reply.deviceId = stuff->deviceId;
     if (dixLookupDevice(&device, stuff->deviceId, client,
                         DixGetAttrAccess) == Success &&
-        device == lorieGamepad) {
+        lorieGamepadForDevice(device)) {
+        LorieGamepadSlot *slot = lorieGamepadForDevice(device);
         reply.present = 1;
         reply.numAxes = 6;
         reply.numButtons = 16;
         reply.numHats = 1;
         reply.mapping = LORIE_CONTROLLER_MAPPING_STANDARD;
-        reply.vendorId = lorieGamepadVendorId;
-        reply.productId = lorieGamepadProductId;
-        reply.inputMode = lorieGamepadInputMode;
-        if (lorieConnectionAlive() && lorieGamepadHasRumble) {
+        reply.vendorId = slot->vendor_id;
+        reply.productId = slot->product_id;
+        reply.inputMode = slot->input_mode;
+        if (lorieControllerConnectionAlive() && slot->has_rumble) {
             reply.capabilities = LORIE_CONTROLLER_CAP_RUMBLE |
                                  LORIE_CONTROLLER_CAP_TRIGGER_RUMBLE;
         }
@@ -99,7 +101,7 @@ LorieControllerVerifyDevice(ClientPtr client, CARD16 deviceId)
 
     if (rc != Success)
         return rc;
-    if (device != lorieGamepad) {
+    if (!lorieGamepadForDevice(device)) {
         client->errorValue = deviceId;
         return BadMatch;
     }
@@ -122,7 +124,9 @@ ProcLorieControllerRumble(ClientPtr client)
         return BadValue;
     }
 
-    lorieSetControllerRumble(stuff->effect, stuff->lowFrequency,
+    DeviceIntPtr device = NULL;
+    dixLookupDevice(&device, stuff->deviceId, client, DixUseAccess);
+    lorieSetControllerRumble(lorieGamepadForDevice(device)->android_id, stuff->effect, stuff->lowFrequency,
                              stuff->highFrequency, stuff->durationMs);
     return Success;
 }
@@ -139,7 +143,9 @@ ProcLorieControllerStopRumble(ClientPtr client)
     if (rc != Success)
         return rc;
 
-    lorieSetControllerRumble(LORIE_CONTROLLER_EFFECT_MAIN, 0, 0, 0);
+    DeviceIntPtr device = NULL;
+    dixLookupDevice(&device, stuff->deviceId, client, DixUseAccess);
+    lorieSetControllerRumble(lorieGamepadForDevice(device)->android_id, LORIE_CONTROLLER_EFFECT_MAIN, 0, 0, 0);
     return Success;
 }
 

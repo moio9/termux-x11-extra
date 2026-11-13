@@ -1,6 +1,5 @@
 package com.termux.x11;
 
-import static com.termux.x11.MainActivity.prefs;
 
 import android.content.Context;
 import android.content.Intent;

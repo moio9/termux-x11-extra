@@ -4,7 +4,6 @@ import static com.termux.x11.MainActivity.ACTION_CUSTOM;
 import static com.termux.x11.MainActivity.getInstance;
 import static com.termux.x11.MainActivity.handler;
 import static com.termux.x11.extrakeys.ExtraKeysConstants.PRIMARY_KEY_CODES_FOR_STRINGS;
-import static com.termux.x11.MainActivity.toggleKeyboardVisibility;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import android.annotation.SuppressLint;
@@ -14,9 +13,9 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.Log;
-import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
@@ -43,7 +42,7 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
     private final MainActivity mActivity;
     private final ExtraKeysView mExtraKeysView;
     private final ClipboardManager mClipboardManager;
-    static private ExtraKeysInfo mExtraKeysInfo;
+    private ExtraKeysInfo mExtraKeysInfo;
 
     private boolean ctrlDown;
     private boolean altDown;
@@ -57,10 +56,10 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
         mEventListener = eventlistener;
         mActivity = activity;
         mExtraKeysView = extrakeysview;
+        mExtraKeysView.setExtraKeysViewClient(this);
         mClipboardManager = (ClipboardManager) mActivity.getSystemService(Context.CLIPBOARD_SERVICE);
     }
 
-    private final KeyCharacterMap mVirtualKeyboardKeyCharacterMap = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD);
     static final String ACTION_START_PREFERENCES_ACTIVITY = "com.termux.x11.start_preferences_activity";
     static final String ACTION_START_MAPPER_ACTIVITY = "com.termux.x11.start_virtualkeymapperactivity";
 
@@ -189,6 +188,29 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
             mActivity.getLorieView().sendKeyEvent(0, KeyEvent.KEYCODE_META_LEFT, false);
     }
 
+    public void withoutCtrlAlt(Runnable keys) {
+        boolean ctrl = mExtraKeysView != null && Boolean.TRUE.equals(mExtraKeysView.readSpecialButton(SpecialButton.CTRL, false));
+        boolean alt = mExtraKeysView != null && Boolean.TRUE.equals(mExtraKeysView.readSpecialButton(SpecialButton.ALT, false));
+
+        if (ctrl)
+            mActivity.getLorieView().sendKeyEvent(0, KeyEvent.KEYCODE_CTRL_LEFT, false);
+        if (alt)
+            mActivity.getLorieView().sendKeyEvent(0, KeyEvent.KEYCODE_ALT_LEFT, false);
+        if (ctrl || alt)
+            SystemClock.sleep(10);
+
+        keys.run();
+
+        if (!ctrl && !alt)
+            return;
+
+        SystemClock.sleep(10);
+        if (ctrl)
+            mActivity.getLorieView().sendKeyEvent(0, KeyEvent.KEYCODE_CTRL_LEFT, true);
+        if (alt)
+            mActivity.getLorieView().sendKeyEvent(0, KeyEvent.KEYCODE_ALT_LEFT, true);
+    }
+
     @Override
     public boolean performExtraKeyButtonHapticFeedback(View view, ExtraKeyButton buttonInfo, Button button) {
         handler.postDelayed(() -> {
@@ -223,11 +245,11 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
             return;
         }
         if ("KEYBOARD".equals(key))
-            toggleKeyboardVisibility(mActivity);
+            mActivity.toggleKeyboardVisibility();
         else if ("MAPPER".equals(key))
             mActivity.startActivity(new Intent(mActivity, VirtualKeyMapperActivity.class) {{ setAction(ACTION_START_MAPPER_ACTIVITY); }});
         else if (key.startsWith(com.termux.x11.AppConstants.PRESET_PREFIX)) {
-            Context context = getInstance();
+            Context context = mActivity;
             Activity activity = (Activity) context;
             FrameLayout container = activity.findViewById(R.id.top);
             MainActivity act = (MainActivity) activity;
@@ -248,12 +270,8 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
             ClipData clipData = mClipboardManager.getPrimaryClip();
             if (clipData != null) {
                 CharSequence pasted = clipData.getItemAt(0).coerceToText(mActivity);
-                if (!TextUtils.isEmpty(pasted)) {
-                    KeyEvent[] events = mVirtualKeyboardKeyCharacterMap.getEvents(pasted.toString().toCharArray());
-                    if (events != null)
-                        for (KeyEvent event : events)
-                            mEventListener.onKey(mActivity.getLorieView(), event.getKeyCode(), event);
-                }
+                if (!TextUtils.isEmpty(pasted))
+                    mActivity.getLorieView().sendTextEvent(pasted.toString().getBytes(UTF_8));
             }
         } else if ("MOUSE_HELPER".equals(key))
             mActivity.toggleMouseAuxButtons();
@@ -272,30 +290,32 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
     /**
      * Set the terminal extra keys and style.
      */
-    public static void setExtraKeys() {
+    @Override
+    public void setExtraKeys() {
         mExtraKeysInfo = null;
 
         try {
             // The mMap stores the extra key and style string values while loading properties
             // Check {@link #getExtraKeysInternalPropertyValueFromValue(String)} and
             // {@link #getExtraKeysStyleInternalPropertyValueFromValue(String)}
-            String extrakeys = MainActivity.getPrefs().extra_keys_config.get();
+            String extrakeys = mActivity.prefs.extra_keys_config.get();
             mExtraKeysInfo = new ExtraKeysInfo(extrakeys, "extra-keys-style", ExtraKeysConstants.CONTROL_CHARS_ALIASES);
         } catch (JSONException e) {
-            Toast.makeText(getInstance(), "Could not load and set the \"extra-keys\" property from the properties file: " + e, Toast.LENGTH_LONG).show();
+            Toast.makeText(mActivity, "Could not load and set the \"extra-keys\" property from the properties file: " + e, Toast.LENGTH_LONG).show();
             Log.e(LOG_TAG, "Could not load and set the \"extra-keys\" property from the properties file: ", e);
 
             try {
                 mExtraKeysInfo = new ExtraKeysInfo(TermuxX11ExtraKeys.DEFAULT_IVALUE_EXTRA_KEYS, "default", ExtraKeysConstants.CONTROL_CHARS_ALIASES);
             } catch (JSONException e2) {
-                Toast.makeText(getInstance(), "Can't create default extra keys", Toast.LENGTH_LONG).show();
+                Toast.makeText(mActivity, "Can't create default extra keys", Toast.LENGTH_LONG).show();
                 Log.e(LOG_TAG, "Could create default extra keys: ", e);
                 mExtraKeysInfo = null;
             }
         }
     }
 
-    public static ExtraKeysInfo getExtraKeysInfo() {
+    @Override
+    public ExtraKeysInfo getExtraKeysInfo() {
         if (mExtraKeysInfo == null)
             setExtraKeys();
         return mExtraKeysInfo;

@@ -109,23 +109,6 @@ STATIC_INLINE void LorieBuffer_release(LorieBuffer* _Nullable buffer) {
 }
 
 /**
- * Mark/unmark the buffer as the source or destination of a GPU copy scheduled with
- * lorieTryScheduleGpuCopy() but not yet completed. Only ever called from the X server thread.
- *
- * @param buffer the buffer
- */
-void LorieBuffer_gpuCopyPendingInc(LorieBuffer* _Nullable buffer);
-void LorieBuffer_gpuCopyPendingDec(LorieBuffer* _Nullable buffer);
-
-/**
- * Whether a CPU access to this buffer could race a GPU copy still in flight (see
- * LorieBuffer_gpuCopyPendingInc/Dec).
- *
- * @param buffer the buffer
- */
-bool LorieBuffer_hasGpuCopyPending(LorieBuffer* _Nullable buffer);
-
-/**
  * Return a description of the LorieBuffer.
  *
  * @param buffer the buffer to be described
@@ -154,6 +137,11 @@ int LorieBuffer_lock(LorieBuffer* _Nullable buffer, void* _Nullable * _Nonnull o
 int LorieBuffer_unlock(LorieBuffer* _Nullable buffer);
 
 /**
+ * Whether the buffer is locked with LorieBuffer_lock.
+ */
+bool LorieBuffer_isLocked(LorieBuffer* _Nullable buffer);
+
+/**
  * Send the AHardwareBuffer to an AF_UNIX socket.
  *
  * @param buffer
@@ -171,11 +159,17 @@ void LorieBuffer_recvHandleFromUnixSocket(int socketFd, LorieBuffer* _Nullable *
 
 /**
  * Attach buffer to GL. Must be done on GL thread.
- * After attaching subsequent call to LorieBuffer_release must be done only from GL thread.
  *
  * @param buffer the buffer to be attached.
  */
 void LorieBuffer_attachToGL(LorieBuffer* _Nullable buffer);
+
+/**
+ * Release what LorieBuffer_attachToGL created. Must be done on GL thread.
+ *
+ * @param buffer the buffer to be detached.
+ */
+void LorieBuffer_detachFromGL(LorieBuffer* _Nullable buffer);
 
 /**
  * Call glBindTexture for the buffer.
@@ -185,6 +179,15 @@ void LorieBuffer_attachToGL(LorieBuffer* _Nullable buffer);
 void LorieBuffer_bindTexture(LorieBuffer* _Nullable buffer);
 
 /**
+ * Upload rows [y1, y2) of an fd-backed buffer into its bound texture.
+ *
+ * @param buffer the buffer to be uploaded.
+ * @param y1 the first row.
+ * @param y2 the row after the last one.
+ */
+void LorieBuffer_uploadRows(LorieBuffer* _Nullable buffer, int y1, int y2);
+
+/**
  * Get the GL texture id the buffer is attached to (see LorieBuffer_attachToGL).
  * Returns 0 if the buffer was not attached to GL yet.
  *
@@ -192,22 +195,6 @@ void LorieBuffer_bindTexture(LorieBuffer* _Nullable buffer);
  * @return
  */
 unsigned int LorieBuffer_getGLTextureId(LorieBuffer* _Nullable buffer);
-
-/**
- * Get width of the buffer.
- *
- * @param buffer
- * @return
- */
-
-int LorieBuffer_getWidth(LorieBuffer* _Nullable buffer);
-/**
- * Get height of the buffer.
- *
- * @param buffer
- * @return
- */
-int LorieBuffer_getHeight(LorieBuffer* _Nullable buffer);
 
 /**
  * Check if the buffer is RGBA.
@@ -265,6 +252,11 @@ int LorieBuffer_recvAHardwareBufferHandleFromUnixSocket(int socketFd, AHardwareB
  * Describes a raw AHardwareBuffer, as obtained from LorieBuffer_recvAHardwareBufferHandleFromUnixSocket.
  */
 void LorieBuffer_describeAHardwareBuffer(AHardwareBuffer* _Nonnull buffer, AHardwareBuffer_Desc* _Nonnull outDesc);
+
+/**
+ * Releases a raw AHardwareBuffer, as obtained from LorieBuffer_recvAHardwareBufferHandleFromUnixSocket.
+ */
+void LorieBuffer_releaseAHardwareBuffer(AHardwareBuffer* _Nonnull buffer);
 
 #undef STATIC_INLINE
 

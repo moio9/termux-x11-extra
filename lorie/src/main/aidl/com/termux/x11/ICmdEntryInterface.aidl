@@ -4,4 +4,6 @@ package com.termux.x11;
 interface ICmdEntryInterface {
     ParcelFileDescriptor getXConnection();
     ParcelFileDescriptor getLogcatOutput();
+    void reportFatalError(String message);
+    void windowChanged(in Surface surface);
 }

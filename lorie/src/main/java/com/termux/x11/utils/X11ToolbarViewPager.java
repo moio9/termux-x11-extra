@@ -1,6 +1,7 @@
 package com.termux.x11.utils;
 
 import static android.os.Build.VERSION.SDK_INT;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import android.annotation.SuppressLint;
 import android.graphics.Color;
@@ -10,8 +11,6 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.KeyEvent;
-import android.view.KeyCharacterMap;
 
 import android.widget.Button;
 import android.widget.EditText;
@@ -56,7 +55,6 @@ public class X11ToolbarViewPager {
                 ExtraKeysView extraKeysView = (ExtraKeysView) layout;
                 mActivity.mExtraKeys = new TermuxX11ExtraKeys(mEventListener, mActivity, extraKeysView);
                 extraKeysView.reload();
-                extraKeysView.setExtraKeysViewClient(mActivity.mExtraKeys);
                 extraKeysView.setOnHoverListener((v, e) -> true);
                 extraKeysView.setOnGenericMotionListener((v, e) -> true);
             } else {
@@ -66,9 +64,8 @@ public class X11ToolbarViewPager {
 
                 editText.setOnEditorActionListener((v, actionId, event) -> {
                     String textToSend = editText.getText().toString();
-                    if (textToSend.isEmpty()) textToSend = "\r";
-                    KeyEvent e = new KeyEvent(0, textToSend, KeyCharacterMap.VIRTUAL_KEYBOARD, 0);
-                    mEventListener.onKey(mActivity.getLorieView(), 0, e);
+                    if (textToSend.isEmpty()) textToSend = "\n";
+                    mActivity.getLorieView().sendTextEvent(textToSend.getBytes(UTF_8));
 
                     editText.setText("");
                     return true;
@@ -76,7 +73,7 @@ public class X11ToolbarViewPager {
 
                 if (SDK_INT >= VERSION_CODES.O)
                     editText.setOnCapturedPointerListener((v2, e2) -> {
-                        MainActivity.setCapturingEnabled(false);
+                        mActivity.setCapturingEnabled(false);
                         return false;
                     });
 

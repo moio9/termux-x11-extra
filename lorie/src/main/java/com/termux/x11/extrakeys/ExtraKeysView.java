@@ -45,7 +45,6 @@ import androidx.annotation.Nullable;
 
 import com.termux.x11.MainActivity;
 import com.termux.x11.R;
-import com.termux.x11.utils.TermuxX11ExtraKeys;
 
 /**
  * A {@link View} showing extra keys (such as Escape, Ctrl, Alt) not normally available on an Android soft
@@ -114,6 +113,12 @@ public final class ExtraKeysView extends GridLayout {
          * can handle it depending on system settings.
          */
         boolean performExtraKeyButtonHapticFeedback(View view, ExtraKeyButton buttonInfo, Button button);
+
+        /** (Re)loads the extra keys config, e.g. from preferences. */
+        void setExtraKeys();
+
+        /** Returns the currently loaded extra keys config, loading it first if needed. */
+        ExtraKeysInfo getExtraKeysInfo();
     }
 
     /** Defines the default value for {@link #mButtonTextColor} */
@@ -211,6 +216,8 @@ public final class ExtraKeysView extends GridLayout {
     /** The text size currently shared by every button, {@code 0} until it has been computed. */
     private float mTextSize;
 
+    private final MainActivity activity;
+    { activity = MainActivity.findActivity(getContext()); }
 
     public ExtraKeysView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -303,8 +310,8 @@ public final class ExtraKeysView extends GridLayout {
      */
     @SuppressLint("ClickableViewAccessibility")
     public void reload() {
-        TermuxX11ExtraKeys.setExtraKeys();
-        ExtraKeysInfo extraKeysInfo = TermuxX11ExtraKeys.getExtraKeysInfo();
+        mExtraKeysViewClient.setExtraKeys();
+        ExtraKeysInfo extraKeysInfo = mExtraKeysViewClient.getExtraKeysInfo();
         if (extraKeysInfo == null)
             return;
 
@@ -321,7 +328,7 @@ public final class ExtraKeysView extends GridLayout {
         setRowCount(buttons.length);
         setColumnCount(maximumLength(buttons));
 
-        boolean reverseRows = MainActivity.getInstance().getPagerPosition() == PAGER_POSITION_TOP;
+        boolean reverseRows = activity.getPagerPosition() == PAGER_POSITION_TOP;
 
         for (int row = 0; row < buttons.length; row++) {
             int actualRow = reverseRows ? buttons.length - 1 - row : row;
@@ -519,7 +526,7 @@ public final class ExtraKeysView extends GridLayout {
     }
 
     void showPopup(View view, ExtraKeyButton extraButton) {
-        int pos = MainActivity.getInstance().getPagerPosition();
+        int pos = activity.getPagerPosition();
         int width = pos == PAGER_POSITION_TOP || pos == PAGER_POSITION_BOTTOM ? view.getMeasuredWidth() : view.getMeasuredHeight();
         int height = pos == PAGER_POSITION_TOP || pos == PAGER_POSITION_BOTTOM ? view.getMeasuredHeight() : view.getMeasuredWidth();
         Button button;

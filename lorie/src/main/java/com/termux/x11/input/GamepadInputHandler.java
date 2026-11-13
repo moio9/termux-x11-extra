@@ -1,6 +1,5 @@
 package com.termux.x11.input;
 
-import static com.termux.x11.MainActivity.prefs;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -14,6 +13,7 @@ import android.view.MotionEvent;
 
 import androidx.preference.PreferenceManager;
 
+import java.util.LinkedHashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -35,7 +35,7 @@ public class GamepadInputHandler {
     private int lastAmp = 0;            // 0..255 (max(L,R) maped)
     private int lastGamepadDeviceId = -1;
     private int vibDeviceId = -1;
-    private int advertisedDeviceId = -1;
+    private final LinkedHashSet<Integer> advertisedDeviceIds = new LinkedHashSet<>();
     private int inputMode = INPUT_XINPUT;
     private String advertisedName = "Termux-X11 Pad";
 
@@ -46,6 +46,7 @@ public class GamepadInputHandler {
     private final GamepadIpc ipc;
     private final GamepadIpc.GamepadState state;
     private boolean forwardToLorie;
+    private boolean separateX11Devices;
     private String mode = "both";      // physical|virtual|both
     private String vibrateMode = "device"; // device|phone|both|off
     private int vibrateStrength = 255;
@@ -121,9 +122,9 @@ public class GamepadInputHandler {
             @Override public void onInputDeviceAdded(int id)    { onDeviceChanged(id); }
             @Override public void onInputDeviceRemoved(int id)  {
                 if (id == vibDeviceId) vibDeviceId = -1;
-                if (id == advertisedDeviceId) {
+                if (advertisedDeviceIds.contains(id)) {
                     advertiseRemoved(id);
-                    advertiseFirstGamepad();
+                    advertiseAllGamepads();
                 }
             }
             @Override public void onInputDeviceChanged(int id)  { onDeviceChanged(id); }
@@ -138,12 +139,14 @@ public class GamepadInputHandler {
 
     public void reloadPrefs(Prefs prefs){
         boolean wasForwarding = forwardToLorie;
+        boolean wasSeparate = separateX11Devices;
         int oldInputMode = inputMode;
         String oldAdvertisedName = advertisedName;
         mode = prefs.gamepadMode.get();
         vibrateMode = prefs.gamepadVibrate.get();
         vibrateStrength = prefs.gamepadVibrateStrength.get();
         forwardToLorie = prefs.gamepadForwardX11.get();
+        separateX11Devices = prefs.gamepadSeparateX11Devices.get();
 
         // backend = keys ?
         String backend = prefs.gamepadInputType.get();
@@ -158,20 +161,12 @@ public class GamepadInputHandler {
         advertisedName = configuredName != null ? configuredName.trim() : "";
 
         if (useKeybinds) forwardToLorie = false;
-        if (wasForwarding && !forwardToLorie && advertisedDeviceId != -1)
-            advertiseRemoved(advertisedDeviceId);
-        else if (!wasForwarding && forwardToLorie && advertisedDeviceId == -1)
-            advertiseFirstGamepad();
-        else if (forwardToLorie && advertisedDeviceId != -1 &&
-                (oldInputMode != inputMode ||
-                 !oldAdvertisedName.equals(advertisedName))) {
-            int deviceId = advertisedDeviceId;
-            InputDevice device = InputDevice.getDevice(deviceId);
-            advertiseRemoved(deviceId);
-            if (device != null && isGamepadDevice(device))
-                advertiseDevice(device);
-            else
-                advertiseFirstGamepad();
+        if (wasForwarding != forwardToLorie || wasSeparate != separateX11Devices || oldInputMode != inputMode ||
+                !oldAdvertisedName.equals(advertisedName)) {
+            for (int id : new LinkedHashSet<>(advertisedDeviceIds)) advertiseRemoved(id);
+            if (forwardToLorie) advertiseAllGamepads();
+        } else if (forwardToLorie && advertisedDeviceIds.isEmpty()) {
+            advertiseAllGamepads();
         }
     }
     private int bitForKey(int keyCode) {
@@ -236,59 +231,43 @@ public class GamepadInputHandler {
 
     private void onDeviceChanged(int deviceId) {
         InputDevice device = InputDevice.getDevice(deviceId);
-        if (isGamepadDevice(device) &&
-                (advertisedDeviceId == -1 ||
-                 advertisedDeviceId == FALLBACK_DEVICE_ID ||
-                 advertisedDeviceId == deviceId)) {
-            if (advertisedDeviceId == FALLBACK_DEVICE_ID)
-                advertiseRemoved(FALLBACK_DEVICE_ID);
-            advertiseDevice(device);
-        }
-        if (deviceId == lastGamepadDeviceId || lastGamepadDeviceId == -1) {
-            rebindVibratorFor(deviceId);
-        }
+        if (!isGamepadDevice(device) || !forwardToLorie) return;
+        if (advertisedDeviceIds.contains(FALLBACK_DEVICE_ID)) advertiseRemoved(FALLBACK_DEVICE_ID);
+        if (!separateX11Devices && !advertisedDeviceIds.isEmpty()) return;
+        if (!advertisedDeviceIds.contains(deviceId)) advertiseDevice(device);
     }
 
     private boolean hasVibrator(InputDevice device) {
         try {
             android.os.Vibrator vibrator = device != null ? device.getVibrator() : null;
             return vibrator != null && vibrator.hasVibrator();
-        } catch (Throwable ignored) {
-            return false;
-        }
+        } catch (Throwable ignored) { return false; }
     }
 
     private void advertiseDevice(InputDevice device) {
         if (device == null || lorieView == null || !forwardToLorie) return;
-        advertisedDeviceId = device.getId();
+        if (advertisedDeviceIds.size() >= 4 && !advertisedDeviceIds.contains(device.getId())) return;
+        advertisedDeviceIds.add(device.getId());
+        String name = advertisedName.isEmpty() ? device.getName() : advertisedName;
         lorieView.sendGamepadDevice(device.getId(), true, device.getVendorId(),
-                device.getProductId(), inputMode, hasVibrator(device),
-                advertisedName.isEmpty() ? device.getName() : advertisedName);
-        Log.i(TAG, "advertise add id=" + device.getId() + " vid=" +
-                Integer.toHexString(device.getVendorId()) + " pid=" +
-                Integer.toHexString(device.getProductId()) + " mode=" + inputMode +
-                " name=" + (advertisedName.isEmpty() ? device.getName() : advertisedName));
+                device.getProductId(), inputMode, hasVibrator(device), name);
     }
 
     private void advertiseRemoved(int deviceId) {
+        if (!advertisedDeviceIds.remove(deviceId)) return;
         if (lorieView != null)
-            lorieView.sendGamepadDevice(deviceId, false, 0, 0, inputMode,
-                    false, "");
-        advertisedDeviceId = -1;
+            lorieView.sendGamepadDevice(deviceId, false, 0, 0, inputMode, false, "");
     }
 
     private void advertiseFallback() {
-        if (lorieView == null || !forwardToLorie) return;
-        advertisedDeviceId = FALLBACK_DEVICE_ID;
-        String name = advertisedName.isEmpty() ? "Lorie gamepad" : advertisedName;
-        lorieView.sendGamepadDevice(FALLBACK_DEVICE_ID, true, 0, 0, inputMode,
-                true, name);
-        Log.i(TAG, "advertise virtual fallback mode=" + inputMode +
-                " name=" + name);
+        if (lorieView == null || !forwardToLorie || !advertisedDeviceIds.isEmpty()) return;
+        advertisedDeviceIds.add(FALLBACK_DEVICE_ID);
+        lorieView.sendGamepadDevice(FALLBACK_DEVICE_ID, true, 0, 0, inputMode, true,
+                advertisedName.isEmpty() ? "Lorie gamepad" : advertisedName);
     }
 
     public void shutdown() {
-        if (advertisedDeviceId != -1) advertiseRemoved(advertisedDeviceId);
+        for (int id : new LinkedHashSet<>(advertisedDeviceIds)) advertiseRemoved(id);
         try { inputManager.unregisterInputDeviceListener(inputDeviceListener); }
         catch (Throwable ignored) {}
         io.shutdownNow();
@@ -296,34 +275,28 @@ public class GamepadInputHandler {
 
     public void resyncToLorie() {
         if (!forwardToLorie) return;
-        /* An announcement sent while the private X-server socket was down is
-         * intentionally not queued. Re-enumerate after every new connection. */
-        advertisedDeviceId = -1;
-        advertiseFirstGamepad();
+        for (int id : new LinkedHashSet<>(advertisedDeviceIds)) advertiseRemoved(id);
+        advertiseAllGamepads();
     }
 
-    private void advertiseFirstGamepad() {
+    private void advertiseAllGamepads() {
         try {
             for (int id : inputManager.getInputDeviceIds()) {
                 InputDevice device = inputManager.getInputDevice(id);
                 if (isGamepadDevice(device)) {
                     advertiseDevice(device);
-                    rebindVibratorFor(id);
-                    return;
+                    if (!separateX11Devices) break;
                 }
             }
-        } catch (Throwable t) {
-            Log.w(TAG, "Unable to enumerate gamepads", t);
-        }
-        advertiseFallback();
+        } catch (Throwable t) { Log.w(TAG, "Unable to enumerate gamepads", t); }
+        if (advertisedDeviceIds.isEmpty()) advertiseFallback();
     }
 
     private void ensureAdvertised(InputDevice device) {
-        if (device == null || !isGamepadDevice(device)) return;
-        if (advertisedDeviceId != device.getId()) {
-            if (advertisedDeviceId != -1) advertiseRemoved(advertisedDeviceId);
-            advertiseDevice(device);
-        }
+        if (device == null || !isGamepadDevice(device) || advertisedDeviceIds.contains(device.getId())) return;
+        if (!separateX11Devices)
+            for (int id : new LinkedHashSet<>(advertisedDeviceIds)) advertiseRemoved(id);
+        onDeviceChanged(device.getId());
     }
 
     private void rebindVibratorFor(int deviceId) {
@@ -407,7 +380,7 @@ public class GamepadInputHandler {
 
     public void setupGamepadInput() {
         Log.d(TAG, "GamepadInputHandler initialized.");
-        advertiseFirstGamepad();
+        advertiseAllGamepads();
         try {
             int[] ids = inputManager.getInputDeviceIds();
             for (int id : ids) {
@@ -426,7 +399,7 @@ public class GamepadInputHandler {
 
 
     public void setAxis(GamepadAxis axis, float x, float y) {
-        sendGamepadAxisEvent(x, y, axis);
+        sendGamepadAxisEvent(-1, x, y, axis);
     }
 
     public void setButton(int androidKeyCode, boolean down) {
@@ -443,7 +416,7 @@ public class GamepadInputHandler {
         if (e != null) ensureAdvertised(e.getDevice());
         if (isDpadKey(keyCode)) {
             setDpadFromKey(keyCode, true);
-            forwardGamepadButtonEvent(keyCode, true);
+            forwardGamepadButtonEvent(e != null ? e.getDeviceId() : -1, keyCode, true);
             sendAsync();
             return true;
         }
@@ -453,7 +426,7 @@ public class GamepadInputHandler {
             synchronized (state) {
                 state.buttons |= bit;
             }
-            forwardGamepadButtonEvent(keyCode, true);
+            forwardGamepadButtonEvent(e != null ? e.getDeviceId() : -1, keyCode, true);
             sendAsync();
             return true;
         }
@@ -469,7 +442,7 @@ public class GamepadInputHandler {
         if (e != null) ensureAdvertised(e.getDevice());
         if (isDpadKey(keyCode)) {
             setDpadFromKey(keyCode, false);
-            forwardGamepadButtonEvent(keyCode, false);
+            forwardGamepadButtonEvent(e != null ? e.getDeviceId() : -1, keyCode, false);
             sendAsync();
             return true;
         }
@@ -479,7 +452,7 @@ public class GamepadInputHandler {
             synchronized (state) {
                 state.buttons &= ~bit;
             }
-            forwardGamepadButtonEvent(keyCode, false);
+            forwardGamepadButtonEvent(e != null ? e.getDeviceId() : -1, keyCode, false);
             sendAsync();
             return true;
         }
@@ -494,11 +467,7 @@ public class GamepadInputHandler {
 
         float hx = event.getAxisValue(MotionEvent.AXIS_HAT_X);
         float hy = event.getAxisValue(MotionEvent.AXIS_HAT_Y);
-        boolean dpadActive;
-        synchronized (state) { dpadActive = state.dpad != 255; }
-        if (hx != 0f || hy != 0f || dpadActive) {
-            sendGamepadAxisEvent(hx, hy, GamepadAxis.DPAD);
-        }
+        sendGamepadAxisEvent(event.getDeviceId(), hx, hy, GamepadAxis.DPAD);
 
         if (event == null) return false;
         lastGamepadDeviceId = event.getDeviceId();
@@ -508,7 +477,7 @@ public class GamepadInputHandler {
             // LEFT STICK
             float lx = event.getAxisValue(MotionEvent.AXIS_X);
             float ly = event.getAxisValue(MotionEvent.AXIS_Y);
-            sendGamepadAxisEvent(lx, ly, GamepadAxis.LEFT_STICK);
+            sendGamepadAxisEvent(event.getDeviceId(), lx, ly, GamepadAxis.LEFT_STICK);
 
             float rx = event.getAxisValue(MotionEvent.AXIS_Z);
             float ry = event.getAxisValue(MotionEvent.AXIS_RZ);
@@ -516,12 +485,12 @@ public class GamepadInputHandler {
                 rx = event.getAxisValue(MotionEvent.AXIS_RX);
                 ry = event.getAxisValue(MotionEvent.AXIS_RY);
             }
-            sendGamepadAxisEvent(rx, ry, GamepadAxis.RIGHT_STICK);
+            sendGamepadAxisEvent(event.getDeviceId(), rx, ry, GamepadAxis.RIGHT_STICK);
 
             // TRIGGERS
             float lt = event.getAxisValue(MotionEvent.AXIS_LTRIGGER);
             float rt = event.getAxisValue(MotionEvent.AXIS_RTRIGGER);
-            sendGamepadAxisEvent(lt, rt, GamepadAxis.TRIGGERS);
+            sendGamepadAxisEvent(event.getDeviceId(), lt, rt, GamepadAxis.TRIGGERS);
 
             return true;
         }
@@ -529,10 +498,10 @@ public class GamepadInputHandler {
         return (hx != 0f || hy != 0f);
     }
 
-    private void forwardGamepadButtonEvent(int keyCode, boolean pressed) {
+    private void forwardGamepadButtonEvent(int deviceId, int keyCode, boolean pressed) {
         final int button = x11ButtonForKey(keyCode);
         if (button != 0 && forwardToLorie && lorieView != null) {
-            lorieView.sendGamepadEvent(button, pressed, 0f, 0f, 0);
+            lorieView.sendGamepadEvent(deviceId, button, pressed, 0f, 0f, 0);
         }
         Log.d(TAG, "keyCode=" + keyCode + " -> XI2 button=" + button
                 + " pressed=" + pressed + " srcForward=" + forwardToLorie);
@@ -561,9 +530,9 @@ public class GamepadInputHandler {
         if (up && left) return 7;
         return 255;
     }
-    private void sendGamepadAxisEvent(float axisX, float axisY, GamepadAxis axis) {
+    private void sendGamepadAxisEvent(int deviceId, float axisX, float axisY, GamepadAxis axis) {
         if (forwardToLorie && lorieView != null) {
-            lorieView.sendGamepadEvent(0, false, axisX, axisY, axis.getId());
+            lorieView.sendGamepadEvent(deviceId, 0, false, axisX, axisY, axis.getId());
         }
         synchronized (state) {
             switch (axis) {
@@ -586,6 +555,18 @@ public class GamepadInputHandler {
         }
         if (ipc != null) sendAsync();
         Log.d(TAG, "Axis event for " + axis.name() + " -> X: " + axisX + ", Y: " + axisY);
+    }
+
+    public void rumbleDevice(int deviceId, int left, int right, int durationMs) {
+        InputDevice device = InputDevice.getDevice(deviceId);
+        android.os.Vibrator vibrator = device == null ? null : device.getVibrator();
+        if (vibrator == null || !vibrator.hasVibrator()) return;
+        int amp = ((Math.max(left, right) >>> 8) * Math.max(0, Math.min(255, vibrateStrength))) / 255;
+        if (amp <= 0 || durationMs <= 0 || "off".equals(vibrateMode)) { vibrator.cancel(); return; }
+        if (!"device".equals(vibrateMode) && !"both".equals(vibrateMode)) return;
+        if (android.os.Build.VERSION.SDK_INT >= 26)
+            vibrator.vibrate(VibrationEffect.createOneShot(Math.max(10, durationMs), Math.max(1, amp)));
+        else vibrator.vibrate(Math.max(10, durationMs));
     }
 
     public void rumble(int left, int right, int durationMs) {
@@ -662,8 +643,16 @@ public class GamepadInputHandler {
             return false;
         }
         int sources = device.getSources();
-        return (sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
-                (sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
+        if ((sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD)
+            return true;
+        // Some keyboards expose a single generic joystick axis. Require a
+        // directional pair before treating a joystick-only device as a pad.
+        if ((sources & InputDevice.SOURCE_JOYSTICK) != InputDevice.SOURCE_JOYSTICK)
+            return false;
+        return (device.getMotionRange(MotionEvent.AXIS_X, InputDevice.SOURCE_JOYSTICK) != null &&
+                device.getMotionRange(MotionEvent.AXIS_Y, InputDevice.SOURCE_JOYSTICK) != null) ||
+                (device.getMotionRange(MotionEvent.AXIS_HAT_X, InputDevice.SOURCE_JOYSTICK) != null &&
+                 device.getMotionRange(MotionEvent.AXIS_HAT_Y, InputDevice.SOURCE_JOYSTICK) != null);
     }
 
 

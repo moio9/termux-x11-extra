@@ -16,6 +16,7 @@
 #include "buffer.h"
 
 #define PORT 7892
+#define DOCUMENT_PORT_BASE 7900
 #define MAGIC "0xDEADBEEF"
 
 #ifdef __cplusplus
@@ -34,78 +35,42 @@ void lorieHandleClipboardData(const char* data);
 void lorieSetStylusEnabled(Bool enabled);
 void lorieSyncLockKeysState(uint8_t state);
 void LorieControllerExtensionInit(void);
-void lorieSetControllerRumble(uint8_t effect, uint16_t low, uint16_t high,
+void lorieSetControllerRumble(int32_t androidDeviceId, uint8_t effect, uint16_t low, uint16_t high,
                               uint32_t durationMs);
 void lorieUpdateGamepadDevice(Bool present, int32_t androidDeviceId,
                               uint32_t vendorId, uint32_t productId,
                               uint8_t inputMode, Bool hasRumble,
                               const char *name);
-void lorieResetGamepadState(void);
-extern int32_t lorieGamepadAndroidId;
-extern uint32_t lorieGamepadVendorId;
-extern uint32_t lorieGamepadProductId;
-extern uint8_t lorieGamepadInputMode;
-extern Bool lorieGamepadHasRumble;
 void lorieWakeServer(void);
-void lorieRecheckGpuCopies(void);
 void lorieChoreographerFrameCallback(__unused long t, AChoreographer* d);
 void lorieActivityConnected(void);
 void lorieSendSharedServerState(int memfd);
 void lorieRegisterBuffer(LorieBuffer* buffer);
 void lorieUnregisterBuffer(LorieBuffer* buffer);
-bool lorieConnectionAlive(void);
-extern bool lorieDebugEnabled; // Set in activity.cpp's startLogcat, only called when TERMUX_X11_DEBUG=1.
-void lorieSetRendererWakeupCond(int fd);
+bool lorieConnectionAlive(int fd);
+bool lorieControllerConnectionAlive(void);
+bool lorieStartRenderer(struct lorie_shared_server_state* state);
+void lorieWakeRenderer(void);
+void lorieSyncRootForGpu(uint64_t id);
+void lorieSendShownChanged(void);
+void lorieSetCursorVisible(Bool visible);
+void lorieSendSyncReply(uint32_t serial);
+void lorieSendHeartbeat(void);
 
-__unused void rendererTestCapabilities(int* legacy_drawing, int* gpu_present_disabled);
-
-static inline __always_inline void lorie_mutex_lock(pthread_mutex_t* mutex, pid_t* lockingPid) {
-    // Unfortunately there is no robust mutexes in bionic.
-    // Posix does not define any valid way to unlock stuck non-robust mutex
-    // so in the case if renderer or X server process unexpectedly die with locked mutex
-    // we will simply reinitialize it.
-    struct timespec ts = {0};
-    while(true) {
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-
-        // 33 msec is enough to complete any drawing operation on both X server and renderer side
-        // In the case if mutex is locked most likely other thread died with the mutex locked
-        ts.tv_nsec += 33UL * 1000000UL;
-        if (ts.tv_nsec >= 1000000000L) {
-            ts.tv_sec  += ts.tv_nsec / 1000000000L;
-            ts.tv_nsec  = ts.tv_nsec % 1000000000L;
-        }
-
-        int ret = pthread_mutex_timedlock(mutex, &ts);
-        if (ret == ETIMEDOUT) {
-            if (*lockingPid == getpid() || lorieConnectionAlive())
-                continue;
-
-            pthread_mutexattr_t attr;
-            pthread_mutex_t initializer = PTHREAD_MUTEX_INITIALIZER;
-            pthread_mutexattr_init(&attr);
-            pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-            pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-            memcpy(mutex, &initializer, sizeof(initializer));
-            pthread_mutex_init(mutex, &attr);
-            // Mutex will be locked fine on the next iteration
-        } else {
-            *lockingPid = getpid();
-            return;
-        }
-    }
-}
-
-static inline __always_inline void lorie_mutex_unlock(pthread_mutex_t* mutex, pid_t* lockingPid) {
-    *lockingPid = 0;
-    pthread_mutex_unlock(mutex);
-}
+typedef struct {
+    uint16_t code; // Linux key code that does not fit into X keycode range.
+    uint32_t keysym;
+} lorieExtendedKey;
+extern const lorieExtendedKey lorieExtendedKeys[];
+extern const size_t lorieExtendedKeysCount;
+void registerCmdEntryPointNatives(JNIEnv *env);
+void lorieListenForKnocks(int port, const char *tag);
 
 typedef enum {
     EVENT_UNKNOWN __unused = 0,
     EVENT_SHARED_SERVER_STATE,
-    EVENT_ADD_BUFFER,
-    EVENT_REMOVE_BUFFER,
+    EVENT_VIEW_CHANGED,
+    EVENT_SHOWN_CHANGED,
     EVENT_SCREEN_SIZE,
     EVENT_TOUCH,
     EVENT_MOUSE,
@@ -119,11 +84,12 @@ typedef enum {
     EVENT_CLIPBOARD_SEND,
     EVENT_GAMEPAD,
     EVENT_WINDOW_FOCUS_CHANGED,
-    EVENT_RENDERER_WAKEUP_COND,
-    EVENT_GPU_COPY_DONE,
     EVENT_LOCK_KEYS_STATE,
     EVENT_GAMEPAD_RUMBLE,
     EVENT_GAMEPAD_DEVICE,
+    EVENT_SYNC,
+    EVENT_SYNC_REPLY,
+    EVENT_HEARTBEAT,
 } eventType;
 
 typedef union {
@@ -175,6 +141,7 @@ typedef union {
         int16_t axisX;
         int16_t axisY;
         uint8_t axisID;
+        int32_t androidDeviceId;
     } gamepad;
     struct {
         uint8_t t;
@@ -182,6 +149,7 @@ typedef union {
         uint16_t low;
         uint16_t high;
         uint32_t durationMs;
+        int32_t androidDeviceId;
     } gamepadRumble;
     struct {
         uint8_t t;
@@ -206,49 +174,30 @@ typedef union {
         uint8_t t;
         uint8_t state; // bit0 = Caps Lock, bit1 = Num Lock, bit2 = Scroll Lock
     } lockKeysState;
+    struct {
+        uint8_t t;
+        uint32_t serial;
+    } sync;
 } lorieEvent;
-
-typedef struct { int16_t x1, y1, x2, y2; } LorieGpuCopyRect;
-
-#define LORIE_GPU_COPY_MAX_RECTS 16
-#define LORIE_GPU_COPY_QUEUE_CAPACITY 8
-
-typedef struct {
-    uint64_t serial;
-    uint64_t srcBufferId;
-    uint64_t dstBufferId;
-    int16_t xOff, yOff;
-    uint16_t numRects;
-    LorieGpuCopyRect rects[LORIE_GPU_COPY_MAX_RECTS];
-} LorieGpuCopyEntry;
 
 struct lorie_shared_server_state {
     /*
-     * Renderer and X server are separated into 2 different processes.
-     * Root window and cursor content and properties are shared across these 2 processes.
      * Reading/drawing root window in renderer the same time X server writes it can cause
      * tearing, texture garbling and other visual artifacts so we should block X server while we are drawing.
      */
     pthread_mutex_t lock; // initialized at X server side.
-    pid_t lockingPid;
-
-    /*
-     * Single-producer (X server, present_execute_copy)/single-consumer (renderer) ring buffer
-     * of deferred GPU copies to be applied to the root window texture before it is drawn to screen.
-     * X server only ever advances writeIndex, renderer only ever advances readIndex and completedSerial.
-     */
-    struct {
-        volatile uint32_t writeIndex;
-        volatile uint32_t readIndex;
-        volatile uint64_t completedSerial;
-        LorieGpuCopyEntry entries[LORIE_GPU_COPY_QUEUE_CAPACITY];
-    } gpuCopyQueue;
 
     /* ID of root window texture to be drawn. */
     uint64_t rootWindowTextureID;
 
     /* A signal to renderer to update root window texture content from shared fragment if needed */
     volatile uint8_t drawRequested;
+
+    /* Rows of the fd-backed root window changed since the renderer uploaded them, one bit per row */
+    uint64_t damagedRows[32768 / 64];
+
+    /* Renderer is waiting for `lock`, the X server hands it over when the current request is done */
+    volatile uint32_t rendererWaiting;
 
     /* We should avoid triggering renderer if there is no output surface */
     volatile uint8_t surfaceAvailable;
@@ -276,12 +225,27 @@ struct lorie_shared_server_state {
         // We should not allow updating cursor content the same time renderer draws it.
         // locking the mutex protecting the root window can cause waiting for the frame to be drawn which is unacceptable
         pthread_mutex_t lock; // initialized at X server side.
-        pid_t lockingPid;
         uint32_t x, y, xhot, yhot, width, height;
         uint32_t bits[512*512]; // 1 megabyte should be enough for any cursor up to 512x512
         // Signals to renderer to update cursor's texture or its coordinates
-        volatile uint8_t updated, moved;
+        volatile uint8_t updated, moved, visible;
     } cursor;
+
+    /* Written by the activity, the renderer applies it on EVENT_VIEW_CHANGED */
+    struct lorie_view {
+        int32_t x, y, width, height, expectedWidth, expectedHeight, hiddenBottom;
+        int32_t zoomPercent, filtering;
+        // Source point a pinch wants kept at a given viewport fraction. Negative sourceX = no pinch.
+        float pinchAnchorSourceX, pinchAnchorSourceY, pinchAnchorFracX, pinchAnchorFracY;
+        uint8_t followCursorPan;
+    } view;
+
+    /* The part of the picture the renderer shows and where, the activity maps input with it */
+    struct {
+        int32_t x, y, width, height;
+        float sourceLeft, sourceTop, sourceWidth, sourceHeight;
+        volatile uint8_t reported; // EVENT_SHOWN_CHANGED is on its way
+    } shown;
 };
 
 #ifdef __cplusplus
@@ -297,44 +261,42 @@ struct Renderer {
     EGLDisplay egl_display = EGL_NO_DISPLAY;
     EGLContext ctx = EGL_NO_CONTEXT;
     EGLSurface defaultSfc = EGL_NO_SURFACE, sfc = EGL_NO_SURFACE;
-    EGLConfig cfg = 0;
+    EGLConfig cfg = nullptr;
     ANativeWindow *defaultWin = nullptr, *win = nullptr;
-    struct xorg_list addedBuffers, buffers, removedBuffers;
+    jobject surface = nullptr; // global ref, kept along with win so the Surface is released right when win is
+    struct xorg_list addedBuffers{}, buffers{}, removedBuffers{};
     volatile jint filtering = GL_NEAREST;
 
     pthread_t thread = 0;
-    volatile bool stopping = false;
-    volatile bool stateChanged = false, windowChanged = false, viewportChanged = false;
-    struct lorie_shared_server_state* pendingState = nullptr;
+    bool initDone = false, legacyDrawingRequired = false;
+    volatile bool windowChanged = false, viewportChanged = false;
     ANativeWindow* pendingWin = nullptr;
+    jobject pendingSurface = nullptr;
     volatile int viewportX = 0, viewportY = 0, viewportW = 0, viewportH = 0, expectedW = 0, expectedH = 0;
     volatile int hiddenBottom = 0;
     volatile int zoomPercent = 100;
+    // Source point a pinch wants kept at a given viewport fraction. Negative sourceX = no pinch.
+    volatile float pinchAnchorSourceX = -1.f, pinchAnchorSourceY = -1.f;
+    volatile float pinchAnchorFracX = 0.5f, pinchAnchorFracY = 0.5f;
+    volatile bool followCursorPan = true;
     float panSourceLeft = 0.f, panSourceTop = 0.f;
     float hiddenPanSourceTop = -1.f; // the vertical pan of the other keyboard state, negative until there was one
     bool bottomWasHidden = false;
     JNIEnv* rendererEnv = nullptr;
     JavaVM* jvm = nullptr; // Stashed by init() so initThread() can be reached via `this` from a plain (non-capturing) pthread_create callback.
-    jclass lorieViewClass = nullptr;
-    jmethodID setRendererViewportMethod = nullptr;
+    jmethodID surfaceRelease = nullptr, surfaceDestroy = nullptr;
     int reportedViewportX = -1, reportedViewportY = -1, reportedViewportW = -1, reportedViewportH = -1;
     float reportedSourceLeft = -1.f, reportedSourceTop = -1.f, reportedSourceWidth = -1.f, reportedSourceHeight = -1.f;
 
-    pthread_mutex_t stateLock;
-    // Shared with the X server so it can signal us directly. Only this thread ever waits on it, so stateLock
-    // (the companion mutex) doesn't need to be shared too.
-    pthread_cond_t* stateCond = nullptr;
-    pthread_cond_t stateChangeFinishCond;
-    pthread_spinlock_t bufferLock;
-    int stateCondFd = -1;
+    pthread_mutex_t stateLock{};
+    pthread_cond_t stateCond{};
+    pthread_cond_t stateChangeFinishCond{};
+    pthread_spinlock_t bufferLock{};
     struct lorie_shared_server_state* state = nullptr;
     struct {
         GLuint id;
         bool cursorChanged;
     } cursor{};
-
-    // FBO used to blit deferred Present "copy" entries (see lorieTryScheduleGpuCopy) into the root texture.
-    GLuint gpuCopyFbo = 0;
 
     GLuint g_texture_program = 0, gv_pos = 0, gv_coords = 0;
     GLuint g_texture_program_bgra = 0, gv_pos_bgra = 0, gv_coords_bgra = 0;
@@ -351,37 +313,27 @@ struct Renderer {
 
     // Formerly function-local statics; moved here for the same reason as everything else above -
     // they are per-instance state, not per-process.
-    uint64_t dstSizeLogCount = 0, srcSizeLogCount = 0;
     uint64_t lastRequestedBufferId = 0;
+    uint64_t uploadedBufferId = UINT64_MAX;
 
-    volatile int* connFdPtr = nullptr;
-
-    void init(JNIEnv* env);
-    void destroy();
+    bool init(JavaVM* vm, struct lorie_shared_server_state* serverState);
+    bool initGl();
     void* initThread();
-    int getWakeupCondFd() const;
-    void setFiltering(jint f);
-    void testCapabilities(int* legacy_drawing, int* gpu_present_disabled);
-    void setSharedState(struct lorie_shared_server_state* newState);
+    bool needsLegacyDrawing();
     void addBuffer(LorieBuffer* buf);
     void removeBuffer(uint64_t id);
-    void removeAllBuffers();
     void setWindow(JNIEnv* env, jobject jsfc);
-    void setViewport(int x, int y, int w, int h, int ew, int eh, int hidden);
-    void setZoom(int percent);
-    void releaseWinAndSurface(ANativeWindow** anw, EGLSurface* esfc);
+    void applyView();
+    void releaseWinAndSurface(ANativeWindow** anw, jobject* jsfc, EGLSurface* esfc);
     void refreshContext();
-    LorieBuffer* findBufferWithRetry(uint64_t id);
-    uint64_t applyPendingGpuCopiesLocked();
-    void applyPendingGpuCopies();
     void redrawLocked(bool* waitingForBuffers);
+    void uploadDamagedRows(LorieBuffer* buffer);
     bool shouldWait(bool* waitingForBuffers);
     void threadLoop();
     void bindTexture(GLuint id) const;
-    void notifyGpuCopyDone();
     void reportViewport(int dstX, int dstY, int dstW, int dstH, float left, float top, float width, float height);
     void drawRegion(GLuint id, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, uint8_t flip);
-    void drawCursor(float displayWidth, float displayHeight, float sourceLeft, float sourceTop);
+    void drawCursor(float displayWidth, float displayHeight, float sourceLeft, float sourceTop, float cursorX, float cursorY);
 };
 #endif
 
@@ -389,8 +341,10 @@ struct Renderer {
 extern "C" {
 #endif
 
-static int android_to_linux_keycode[304] = {
+static int android_to_linux_keycode[320] = {
+        [ 3   /* ANDROID_KEYCODE_HOME */] = KEY_HOMEPAGE,
         [ 4   /* ANDROID_KEYCODE_BACK */] = KEY_ESC,
+        [ 5   /* ANDROID_KEYCODE_CALL */] = KEY_PHONE,
         [ 7   /* ANDROID_KEYCODE_0 */] = KEY_0,
         [ 8   /* ANDROID_KEYCODE_1 */] = KEY_1,
         [ 9   /* ANDROID_KEYCODE_2 */] = KEY_2,
@@ -459,11 +413,14 @@ static int android_to_linux_keycode[304] = {
         [ 74  /* ANDROID_KEYCODE_SEMICOLON */] = KEY_SEMICOLON,
         [ 75  /* ANDROID_KEYCODE_APOSTROPHE */] = KEY_APOSTROPHE,
         [ 76  /* ANDROID_KEYCODE_SLASH */] = KEY_SLASH,
+        [ 79  /* ANDROID_KEYCODE_HEADSETHOOK */] = KEY_MEDIA,
+        [ 80  /* ANDROID_KEYCODE_FOCUS */] = KEY_CAMERA_FOCUS,
         [ 81  /* ANDROID_KEYCODE_PLUS */] = KEY_KPPLUS,
-        [ 82  /* ANDROID_KEYCODE_MENU */] = KEY_CONTEXT_MENU,
+        [ 82  /* ANDROID_KEYCODE_MENU */] = KEY_COMPOSE,
+        [ 83  /* ANDROID_KEYCODE_NOTIFICATION */] = KEY_DASHBOARD,
         [ 84  /* ANDROID_KEYCODE_SEARCH */] = KEY_SEARCH,
         [ 85  /* ANDROID_KEYCODE_MEDIA_PLAY_PAUSE */] = KEY_PLAYPAUSE,
-        [ 86  /* ANDROID_KEYCODE_MEDIA_STOP */] = KEY_STOP_RECORD,
+        [ 86  /* ANDROID_KEYCODE_MEDIA_STOP */] = KEY_STOPCD,
         [ 87  /* ANDROID_KEYCODE_MEDIA_NEXT */] = KEY_NEXTSONG,
         [ 88  /* ANDROID_KEYCODE_MEDIA_PREVIOUS */] = KEY_PREVIOUSSONG,
         [ 89  /* ANDROID_KEYCODE_MEDIA_REWIND */] = KEY_REWIND,
@@ -479,8 +436,9 @@ static int android_to_linux_keycode[304] = {
         [ 116  /* ANDROID_KEYCODE_SCROLL_LOCK */] = KEY_SCROLLLOCK,
         [ 117  /* ANDROID_KEYCODE_META_LEFT */] = KEY_LEFTMETA,
         [ 118  /* ANDROID_KEYCODE_META_RIGHT */] = KEY_RIGHTMETA,
+        [ 119  /* ANDROID_KEYCODE_FUNCTION */] = KEY_FN,
         [ 120  /* ANDROID_KEYCODE_SYSRQ */] = KEY_PRINT,
-        [ 121  /* ANDROID_KEYCODE_BREAK */] = KEY_BREAK,
+        [ 121  /* ANDROID_KEYCODE_BREAK */] = KEY_PAUSE,
         [ 122  /* ANDROID_KEYCODE_MOVE_HOME */] = KEY_HOME,
         [ 123  /* ANDROID_KEYCODE_MOVE_END */] = KEY_END,
         [ 124  /* ANDROID_KEYCODE_INSERT */] = KEY_INSERT,
@@ -530,8 +488,48 @@ static int android_to_linux_keycode[304] = {
         [ 168  /* ANDROID_KEYCODE_ZOOM_IN */] = KEY_ZOOMIN,
         [ 169  /* ANDROID_KEYCODE_ZOOM_OUT */] = KEY_ZOOMOUT,
         [ 170  /* ANDROID_KEYCODE_TV */] = KEY_TV,
+        [ 172  /* ANDROID_KEYCODE_GUIDE */] = KEY_PROGRAM,
+        [ 173  /* ANDROID_KEYCODE_DVR */] = KEY_PVR,
+        [ 174  /* ANDROID_KEYCODE_BOOKMARK */] = KEY_BOOKMARKS,
+        [ 175  /* ANDROID_KEYCODE_CAPTIONS */] = KEY_SUBTITLE,
+        [ 183  /* ANDROID_KEYCODE_PROG_RED */] = KEY_RED,
+        [ 184  /* ANDROID_KEYCODE_PROG_GREEN */] = KEY_GREEN,
+        [ 185  /* ANDROID_KEYCODE_PROG_YELLOW */] = KEY_YELLOW,
+        [ 186  /* ANDROID_KEYCODE_PROG_BLUE */] = KEY_BLUE,
+        [ 187  /* ANDROID_KEYCODE_APP_SWITCH */] = KEY_APPSELECT,
+        [ 204  /* ANDROID_KEYCODE_LANGUAGE_SWITCH */] = KEY_LANGUAGE,
+        [ 207  /* ANDROID_KEYCODE_CONTACTS */] = KEY_ADDRESSBOOK,
         [ 208  /* ANDROID_KEYCODE_CALENDAR */] = KEY_CALENDAR,
+        [ 209  /* ANDROID_KEYCODE_MUSIC */] = KEY_SOUND,
         [ 210  /* ANDROID_KEYCODE_CALCULATOR */] = KEY_CALC,
+        [ 211  /* ANDROID_KEYCODE_ZENKAKU_HANKAKU */] = KEY_ZENKAKUHANKAKU,
+        [ 212  /* ANDROID_KEYCODE_EISU */] = KEY_HANJA,
+        [ 213  /* ANDROID_KEYCODE_MUHENKAN */] = KEY_MUHENKAN,
+        [ 214  /* ANDROID_KEYCODE_HENKAN */] = KEY_HENKAN,
+        [ 215  /* ANDROID_KEYCODE_KATAKANA_HIRAGANA */] = KEY_KATAKANAHIRAGANA,
+        [ 216  /* ANDROID_KEYCODE_YEN */] = KEY_YEN,
+        [ 217  /* ANDROID_KEYCODE_RO */] = KEY_RO,
+        [ 218  /* ANDROID_KEYCODE_KANA */] = KEY_HANGEUL,
+        [ 219  /* ANDROID_KEYCODE_ASSIST */] = KEY_ASSISTANT,
+        [ 220  /* ANDROID_KEYCODE_BRIGHTNESS_DOWN */] = KEY_BRIGHTNESSDOWN,
+        [ 221  /* ANDROID_KEYCODE_BRIGHTNESS_UP */] = KEY_BRIGHTNESSUP,
+        [ 223  /* ANDROID_KEYCODE_SLEEP */] = KEY_SLEEP,
+        [ 224  /* ANDROID_KEYCODE_WAKEUP */] = KEY_WAKEUP,
+        [ 229  /* ANDROID_KEYCODE_LAST_CHANNEL */] = KEY_LAST,
+        [ 231  /* ANDROID_KEYCODE_VOICE_ASSIST */] = KEY_VOICECOMMAND,
+        [ 277  /* ANDROID_KEYCODE_CUT */] = KEY_CUT,
+        [ 278  /* ANDROID_KEYCODE_COPY */] = KEY_COPY,
+        [ 279  /* ANDROID_KEYCODE_PASTE */] = KEY_PASTE,
+        [ 285  /* ANDROID_KEYCODE_REFRESH */] = KEY_REFRESH,
+        [ 305  /* ANDROID_KEYCODE_KEYBOARD_BACKLIGHT_DOWN */] = KEY_KBDILLUMDOWN,
+        [ 306  /* ANDROID_KEYCODE_KEYBOARD_BACKLIGHT_UP */] = KEY_KBDILLUMUP,
+        [ 307  /* ANDROID_KEYCODE_KEYBOARD_BACKLIGHT_TOGGLE */] = KEY_KBDILLUMTOGGLE,
+        [ 312  /* ANDROID_KEYCODE_RECENT_APPS */] = KEY_SCALE,
+        [ 313  /* ANDROID_KEYCODE_MACRO_1 */] = KEY_MACRO1,
+        [ 314  /* ANDROID_KEYCODE_MACRO_2 */] = KEY_MACRO2,
+        [ 315  /* ANDROID_KEYCODE_MACRO_3 */] = KEY_MACRO3,
+        [ 316  /* ANDROID_KEYCODE_MACRO_4 */] = KEY_MACRO4,
+        [ 317  /* ANDROID_KEYCODE_EMOJI_PICKER */] = KEY_EMOJI_PICKER,
 };
 
 #ifdef __cplusplus

@@ -23,13 +23,16 @@ extern "C" {
 #include <xkbsrv.h>
 #include <inpututils.h>
 #include <randrstr.h>
+#include <mi.h>
 #undef class
 #undef public
 }
+#include <dlfcn.h>
 #include <linux/in.h>
 #include <arpa/inet.h>
 #include <poll.h>
 #include "lorie.h"
+#include "gamepad_device.h"
 
 #define log(prio, ...) __android_log_print(ANDROID_LOG_ ## prio, "LorieNative", __VA_ARGS__)
 
@@ -44,12 +47,23 @@ extern "C" void lorieKeysymKeyboardEvent(KeySym keysym, int down);
 char *xtrans_unix_path_x11 = nullptr;
 char *xtrans_unix_dir_x11 = nullptr;
 
-struct xorg_list registeredBuffers;
+static Renderer renderer;
+static JavaVM* vm = nullptr;
+static JNIEnv* serverEnv = nullptr;
+static jobject thiz = nullptr;
+static jmethodID sendBroadcast = nullptr;
+static jmethodID sendBroadcastDelayed = nullptr;
+static jmethodID setDocumentTag = nullptr;
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_termux_x11_CmdEntryPoint_start(JNIEnv *env, __unused jclass cls, jobjectArray args) {
+static jboolean start(JNIEnv *env, jobject self, jobjectArray args) {
     pthread_t t;
-    JavaVM* vm = nullptr;
+
+    thiz = env->NewGlobalRef(self);
+    if (!thiz)
+        FatalError("Failed to create a global reference for the CmdEntryPoint instance");
+    sendBroadcast = env->GetMethodID(env->GetObjectClass(self), "sendBroadcast", "()V");
+    sendBroadcastDelayed = env->GetMethodID(env->GetObjectClass(self), "sendBroadcastDelayed", "()V");
+    setDocumentTag = env->GetMethodID(env->GetObjectClass(self), "setDocumentTag", "(Ljava/lang/String;)V");
     auto detectTracer = []() -> Bool {
         FILE *fp;
         char line[256];
@@ -61,7 +75,7 @@ Java_com_termux_x11_CmdEntryPoint_start(JNIEnv *env, __unused jclass cls, jobjec
 
         while (fgets(line, sizeof(line), fp)) {
             if (strncmp(line, "TracerPid:", 10) == 0) {
-                sscanf(line+10, "%d", &pid);
+                pid = (int) strtol(line + 10, nullptr, 10);
                 break;
             }
         }
@@ -202,8 +216,9 @@ Java_com_termux_x11_CmdEntryPoint_start(JNIEnv *env, __unused jclass cls, jobjec
     // Trigger it first time
     AChoreographer_postFrameCallback(choreographer, (AChoreographer_frameCallback) lorieChoreographerFrameCallback, choreographer);
 
-    xorg_list_init(&registeredBuffers);
-    pthread_create(&t, nullptr, +[](__unused void* cookie) -> void* {
+    pthread_create(&t, nullptr, +[](void* cookie) -> void* {
+        if (((JavaVM*) cookie)->AttachCurrentThread(&serverEnv, nullptr) != JNI_OK)
+            FatalError("Failed to attach the X server thread to the JVM");
         exit(dix_main(argc, (char**) argv, (char*[]) { nullptr }));
     }, vm);
     return JNI_TRUE;
@@ -237,92 +252,59 @@ static Bool handleTouchEvent(__unused ClientPtr pClient, void *closure) {
     valuator_mask_set_double(&mask, 0, x * 0xFFFF / (float) pScreenPtr->width);
     valuator_mask_set_double(&mask, 1, y * 0xFFFF / (float) pScreenPtr->height);
     QueueTouchEvents(lorieTouch, e->touch.type, e->touch.id, 0, &mask);
+    lorieSetCursorVisible(FALSE);
 
     end:
     free(e);
     return TRUE;
 }
 
-static uint32_t gamepad_direct_buttons;
-static uint32_t gamepad_hat_buttons;
-
-extern "C" void lorieResetGamepadState(void) {
-    gamepad_direct_buttons = 0;
-    gamepad_hat_buttons = 0;
-}
-
-static void queueGamepadButton(unsigned int button, Bool pressed) {
-    uint32_t bit, old_buttons, new_buttons;
-
-    if (!lorieGamepad || button < 1 || button > 16)
-        return;
-
-    bit = 1U << (button - 1);
-    old_buttons = gamepad_direct_buttons | gamepad_hat_buttons;
-    if (pressed)
-        gamepad_direct_buttons |= bit;
-    else
-        gamepad_direct_buttons &= ~bit;
-    new_buttons = gamepad_direct_buttons | gamepad_hat_buttons;
-
-    if ((old_buttons ^ new_buttons) & bit)
-        QueuePointerEvents(lorieGamepad,
-                           (new_buttons & bit) ? ButtonPress : ButtonRelease,
+static void queueGamepadButton(LorieGamepadSlot *slot, unsigned button, Bool pressed) {
+    if (!slot || !slot->device) return;
+    uint32_t changed = lorie_gamepad_button(&slot->buttons, button, pressed);
+    if (changed) {
+        uint32_t current = slot->buttons.direct | slot->buttons.hat;
+        QueuePointerEvents(slot->device, (current & changed) ? ButtonPress : ButtonRelease,
                            button, POINTER_RELATIVE, NULL);
+    }
 }
 
-static void queueGamepadHat(int x, int y) {
-    uint32_t old_buttons = gamepad_direct_buttons | gamepad_hat_buttons;
-    uint32_t new_hat = 0;
-    uint32_t new_buttons, changed;
-    unsigned int button;
-
-    /* XI2 buttons 11..14 are Up, Down, Left and Right respectively. */
-    if (y < -127) new_hat |= 1U << 10;
-    if (y >  127) new_hat |= 1U << 11;
-    if (x < -127) new_hat |= 1U << 12;
-    if (x >  127) new_hat |= 1U << 13;
-    gamepad_hat_buttons = new_hat;
-
-    new_buttons = gamepad_direct_buttons | gamepad_hat_buttons;
-    changed = (old_buttons ^ new_buttons) & (0xFU << 10);
-    for (button = 11; button <= 14; button++) {
-        uint32_t bit = 1U << (button - 1);
+static void queueGamepadHat(LorieGamepadSlot *slot, int x, int y) {
+    if (!slot || !slot->device) return;
+    uint32_t changed = lorie_gamepad_hat(&slot->buttons, x, y);
+    uint32_t current = slot->buttons.direct | slot->buttons.hat;
+    for (unsigned button = 11; button <= 14; ++button) {
+        uint32_t bit = 1u << (button - 1);
         if (changed & bit)
-            QueuePointerEvents(lorieGamepad,
-                               (new_buttons & bit) ? ButtonPress : ButtonRelease,
+            QueuePointerEvents(slot->device, (current & bit) ? ButtonPress : ButtonRelease,
                                button, POINTER_RELATIVE, NULL);
     }
 }
 
-static void queueGamepadAxes(const lorieEvent *e) {
+static void queueGamepadAxes(LorieGamepadSlot *slot, const lorieEvent *e) {
+    if (!slot || !slot->device) return;
     ValuatorMask mask;
-
-    if (!lorieGamepad)
-        return;
-
     valuator_mask_zero(&mask);
     switch (e->gamepad.axisID) {
-        case 0: /* left stick */
+        case 0:
             valuator_mask_set_double(&mask, 0, e->gamepad.axisX);
             valuator_mask_set_double(&mask, 1, e->gamepad.axisY);
             break;
-        case 1: /* right stick */
+        case 1:
             valuator_mask_set_double(&mask, 2, e->gamepad.axisX);
             valuator_mask_set_double(&mask, 3, e->gamepad.axisY);
             break;
-        case 2: /* triggers arrive as 0..255 */
+        case 2:
             valuator_mask_set_double(&mask, 4, e->gamepad.axisX * (32767.0 / 255.0));
             valuator_mask_set_double(&mask, 5, e->gamepad.axisY * (32767.0 / 255.0));
             break;
-        case 3: /* d-pad is represented as a SDL hat by the client backend */
-            queueGamepadHat(e->gamepad.axisX, e->gamepad.axisY);
+        case 3:
+            queueGamepadHat(slot, e->gamepad.axisX, e->gamepad.axisY);
             return;
         default:
             return;
     }
-
-    QueuePointerEvents(lorieGamepad, MotionNotify, 0, POINTER_ABSOLUTE, &mask);
+    QueuePointerEvents(slot->device, MotionNotify, 0, POINTER_ABSOLUTE, &mask);
 }
 
 void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
@@ -331,13 +313,11 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
     valuator_mask_zero(&mask);
 
     if (ready & X_NOTIFY_ERROR) {
-        LorieBuffer* buf;
         InputThreadUnregisterDev(fd);
         close(fd);
         conn_fd = -1;
         lorieEnableClipboardSync(FALSE);
-        while ((buf = LorieBufferList_first(&registeredBuffers)))
-            LorieBuffer_removeFromList(buf);
+        renderer.setWindow(nullptr, nullptr);
         return;
     }
 
@@ -415,6 +395,7 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
             }
             case EVENT_MOUSE: {
                 int flags;
+                lorieSetCursorVisible(TRUE);
                 switch(e.mouse.detail) {
                     case 0: // BUTTON_UNDEFINED
                         flags = (e.mouse.relative) ? POINTER_RELATIVE | POINTER_ACCELERATE : POINTER_ABSOLUTE | POINTER_SCREEN | POINTER_NORAW;
@@ -432,12 +413,12 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
                         QueuePointerEvents(lorieMouse, e.mouse.down ? ButtonPress : ButtonRelease, e.mouse.detail, POINTER_RELATIVE, nullptr);
                         break;
                     case 4: // BUTTON_SCROLL
-                        if (e.mouse.x) {
+                        if (e.mouse.x != 0.0f) {
                             valuator_mask_zero(&mask);
                             valuator_mask_set_double(&mask, 2, (double) e.mouse.x / 120);
                             QueuePointerEvents(lorieMouse, MotionNotify, 0, POINTER_RELATIVE, &mask);
                         }
-                        if (e.mouse.y) {
+                        if (e.mouse.y != 0.0f) {
                             valuator_mask_zero(&mask);
                             valuator_mask_set_double(&mask, 3, (double) e.mouse.y / 120);
                             QueuePointerEvents(lorieMouse, MotionNotify, 0, POINTER_RELATIVE, &mask);
@@ -446,15 +427,23 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
                 }
                 break;
             }
-            case EVENT_KEY:
-                QueueKeyboardEvents(lorieKeyboard, e.key.state ? KeyPress : KeyRelease, e.key.key);
+            case EVENT_GAMEPAD: {
+                lorieEvent *copy = (lorieEvent *)malloc(sizeof(e));
+                if (!copy) break;
+                *copy = e;
+                QueueWorkProc(+[](__unused ClientPtr client, void *closure) -> Bool {
+                    lorieEvent *event = (lorieEvent *)closure;
+                    LorieGamepadSlot *slot = lorieGamepadForAndroid(event->gamepad.androidDeviceId);
+                    if (event->gamepad.button)
+                        queueGamepadButton(slot, event->gamepad.button, event->gamepad.pressed);
+                    else
+                        queueGamepadAxes(slot, event);
+                    free(event);
+                    return TRUE;
+                }, nullptr, copy);
+                lorieWakeServer();
                 break;
-            case EVENT_GAMEPAD:
-                if (e.gamepad.button)
-                    queueGamepadButton(e.gamepad.button, e.gamepad.pressed);
-                else
-                    queueGamepadAxes(&e);
-                break;
+            }
             case EVENT_GAMEPAD_DEVICE: {
                 const size_t name_size = e.gamepadDevice.nameSize;
                 auto *copy = (lorieEvent*) calloc(1, sizeof(lorieEvent) + name_size + 1);
@@ -481,11 +470,32 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
                 lorieWakeServer();
                 break;
             }
+            case EVENT_KEY:
             case EVENT_UNICODE: {
-                int ks = ucs2keysym((long) e.unicode.code);
-                __android_log_print(ANDROID_LOG_DEBUG, "LorieNative", "Trying to input keysym %d\n", ks);
-                lorieKeysymKeyboardEvent(ks, TRUE);
-                lorieKeysymKeyboardEvent(ks, FALSE);
+                // UTF-32 code points span at most 21 bits (max 0x10FFFF), so shifting left by 1 is safe even on a 32-bit uintptr_t.
+                uintptr_t payload = e.type == EVENT_KEY ? 1u | ((uintptr_t) e.key.state << 1) | ((uintptr_t) e.key.key << 2) : ((uintptr_t) e.unicode.code << 1);
+                QueueWorkProc(+[](__unused ClientPtr pClient, void *closure) -> Bool {
+                    // This must be done only on X server thread (touches XKB state directly).
+                    uintptr_t payload = (uintptr_t) closure;
+                    if (payload & 1) {
+                        uintptr_t keycode = payload >> 2;
+                        if (keycode > 255) {
+                            for (size_t i = 0; i < lorieExtendedKeysCount; i++)
+                                if (lorieExtendedKeys[i].code == keycode - 8)
+                                    lorieKeysymKeyboardEvent(lorieExtendedKeys[i].keysym, payload >> 1 & 1);
+                            return TRUE;
+                        }
+                        QueueKeyboardEvents(lorieKeyboard, (payload >> 1 & 1) ? KeyPress : KeyRelease, keycode);
+                        mieqProcessInputEvents();
+                    } else {
+                        int ks = ucs2keysym((long) (payload >> 1));
+                        __android_log_print(ANDROID_LOG_DEBUG, "LorieNative", "Trying to input keysym %d\n", ks);
+                        lorieKeysymKeyboardEvent(ks, TRUE);
+                        lorieKeysymKeyboardEvent(ks, FALSE);
+                    }
+                    return TRUE;
+                }, nullptr, (void*) payload);
+                lorieWakeServer();
                 break;
             }
             case EVENT_CLIPBOARD_ENABLE:
@@ -511,20 +521,23 @@ void handleLorieEvents(int fd, __unused int ready, __unused void *ignored) {
                 lorieWakeServer();
                 break;
             }
-            case EVENT_RENDERER_WAKEUP_COND: {
-                int wakeupFd = ancil_recv_fd(fd);
-                if (wakeupFd >= 0)
-                    lorieSetRendererWakeupCond(wakeupFd);
+            case EVENT_VIEW_CHANGED: {
+                renderer.applyView();
                 break;
             }
-            case EVENT_GPU_COPY_DONE:
-                QueueWorkProc(+[](__unused ClientPtr pClient, __unused void *closure) -> Bool {
-                    // This must be done only on X server thread (touches present's internal vblank queue).
-                    lorieRecheckGpuCopies();
+            case EVENT_SYNC: {
+                auto serial = (uintptr_t) e.sync.serial;
+                QueueWorkProc(+[](__unused ClientPtr pClient, void *closure) -> Bool {
+                    // This must be done only on X server thread. Forces mieq to drain everything
+                    // enqueued before this marker, so the reply is a reliable "the server has
+                    // applied every event sent so far" barrier.
+                    mieqProcessInputEvents();
+                    lorieSendSyncReply((uint32_t) (uintptr_t) closure);
                     return TRUE;
-                }, nullptr, nullptr);
+                }, nullptr, (void*) serial);
                 lorieWakeServer();
                 break;
+            }
             case EVENT_LOCK_KEYS_STATE: {
                 auto *copy = (lorieEvent*) calloc(1, sizeof(lorieEvent));
                 memcpy(copy, &e, sizeof(e));
@@ -555,6 +568,20 @@ void lorieSendClipboardData(const char* data) {
     }
 }
 
+void lorieSendSyncReply(uint32_t serial) {
+    if (conn_fd != -1) {
+        lorieEvent e = { .sync = { .t = EVENT_SYNC_REPLY, .serial = serial } };
+        write(conn_fd, &e, sizeof(e));
+    }
+}
+
+void lorieSendHeartbeat(void) {
+    if (conn_fd != -1) {
+        lorieEvent e = { .type = EVENT_HEARTBEAT };
+        write(conn_fd, &e, sizeof(e));
+    }
+}
+
 void lorieRequestClipboard(void) {
     if (conn_fd != -1) {
         lorieEvent e = { .type = EVENT_CLIPBOARD_REQUEST };
@@ -562,7 +589,7 @@ void lorieRequestClipboard(void) {
     }
 }
 
-extern "C" void lorieSetControllerRumble(uint8_t effect, uint16_t low,
+extern "C" void lorieSetControllerRumble(int32_t androidDeviceId, uint8_t effect, uint16_t low,
                                            uint16_t high,
                                            uint32_t durationMs) {
     if (conn_fd != -1) {
@@ -572,17 +599,20 @@ extern "C" void lorieSetControllerRumble(uint8_t effect, uint16_t low,
             .low = low,
             .high = high,
             .durationMs = durationMs,
+            .androidDeviceId = androidDeviceId,
         } };
         write(conn_fd, &e, sizeof(e));
     }
 }
 
-bool lorieConnectionAlive(void) {
-    if (conn_fd == -1)
+bool lorieControllerConnectionAlive(void) { return lorieConnectionAlive(conn_fd); }
+
+bool lorieConnectionAlive(int fd) {
+    if (fd == -1)
         return false;
 
     // Check if socket is closed or has errors.
-    struct pollfd p = { .fd = conn_fd, .events = POLLIN | POLLHUP | POLLERR | POLLRDHUP };
+    struct pollfd p = { .fd = fd, .events = POLLIN | POLLHUP | POLLERR | POLLRDHUP };
     return !(poll(&p, 1, 0) == 1 && (p.revents & (POLLERR | POLLNVAL | POLLRDHUP | POLLHUP)));
 }
 
@@ -594,31 +624,37 @@ void lorieSendSharedServerState(int memfd) {
     }
 }
 
-void lorieRegisterBuffer(LorieBuffer* buffer) {
-    unsigned long id = LorieBuffer_description(buffer)->id;
-    if (conn_fd == -1 || LorieBufferList_findById(&registeredBuffers, id))
-        return; // Already registered
+bool lorieStartRenderer(struct lorie_shared_server_state* state) {
+    return renderer.init(vm, state);
+}
 
-    if (conn_fd != -1 && buffer) {
-        lorieEvent e = { .type = EVENT_ADD_BUFFER };
-        write(conn_fd, &e, sizeof(e));
-        LorieBuffer_sendHandleToUnixSocket(buffer, conn_fd);
-        LorieBuffer_addToList(buffer, &registeredBuffers);
-        const LorieBuffer_Desc* desc = LorieBuffer_description(buffer);
-        log(INFO, "Sent shared buffer width %d stride %d height %d format %d type %d id %llu", desc->width, desc->stride, desc->height, desc->format, desc->type, desc->id);
-    }
+void lorieWakeRenderer(void) {
+    pthread_cond_signal(&renderer.stateCond);
+}
+
+void lorieRegisterBuffer(LorieBuffer* buffer) {
+    if (buffer)
+        renderer.addBuffer(buffer);
 }
 
 void lorieUnregisterBuffer(LorieBuffer* buffer) {
-    unsigned long id;
-    if (!buffer || (!LorieBufferList_findById(&registeredBuffers, (id = LorieBuffer_description(buffer)->id))))
-        return;  // Not exist or not registered so no need to unregister
+    if (buffer)
+        renderer.removeBuffer(LorieBuffer_description(buffer)->id);
+}
 
-    if (conn_fd != -1 && buffer) {
-        lorieEvent e = { .removeBuffer = { .t = EVENT_REMOVE_BUFFER, .id = id } };
-        write(conn_fd, &e, sizeof(e));
-        LorieBuffer_removeFromList(buffer);
-    }
+void lorieSendShownChanged(void) {
+    QueueWorkProc(+[](__unused ClientPtr pClient, __unused void *closure) -> Bool {
+        if (conn_fd != -1) {
+            lorieEvent e = { .type = EVENT_SHOWN_CHANGED };
+            write(conn_fd, &e, sizeof(e));
+        }
+        return TRUE;
+    }, nullptr, nullptr);
+    lorieWakeServer();
+}
+
+static void windowChanged(JNIEnv *env, __unused jobject cls, jobject surface) {
+    renderer.setWindow(env, surface);
 }
 
 extern "C" void DDXNotifyFocusChanged(void) {
@@ -628,8 +664,7 @@ extern "C" void DDXNotifyFocusChanged(void) {
     }
 }
 
-extern "C" JNIEXPORT jobject JNICALL
-Java_com_termux_x11_CmdEntryPoint_getXConnection(JNIEnv *env, __unused jobject cls) {
+static jobject getXConnection(JNIEnv *env, __unused jobject cls) {
     int client[2];
     jclass ParcelFileDescriptorClass = env->FindClass("android/os/ParcelFileDescriptor");
     jmethodID adoptFd = env->GetStaticMethodID(ParcelFileDescriptorClass, "adoptFd", "(I)Landroid/os/ParcelFileDescriptor;");
@@ -645,8 +680,7 @@ Java_com_termux_x11_CmdEntryPoint_getXConnection(JNIEnv *env, __unused jobject c
     return env->CallStaticObjectMethod(ParcelFileDescriptorClass, adoptFd, client[0]);
 }
 
-extern "C" JNIEXPORT jobject JNICALL
-Java_com_termux_x11_CmdEntryPoint_getLogcatOutput(JNIEnv *env, __unused jobject cls) {
+static jobject getLogcatOutput(JNIEnv *env, __unused jobject cls) {
     jclass ParcelFileDescriptorClass = env->FindClass("android/os/ParcelFileDescriptor");
     jmethodID adoptFd = env->GetStaticMethodID(ParcelFileDescriptorClass, "adoptFd", "(I)Landroid/os/ParcelFileDescriptor;");
     const char *debug = getenv("TERMUX_X11_DEBUG");
@@ -668,57 +702,95 @@ Java_com_termux_x11_CmdEntryPoint_getLogcatOutput(JNIEnv *env, __unused jobject 
     return nullptr;
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_termux_x11_CmdEntryPoint_connected(__unused JNIEnv *env, __unused jclass clazz) {
-    return conn_fd != -1;
+static void reportFatalError(JNIEnv *env, __unused jobject cls, jstring message) {
+    if (conn_fd != -1)
+        return;
+
+    const char *chars = env->GetStringUTFChars(message, nullptr);
+    char *copy = strdup(chars);
+    env->ReleaseStringUTFChars(message, chars);
+
+    QueueWorkProc(+[](__unused ClientPtr pClient, void *closure) -> Bool {
+        // Runs the same teardown as any other FatalError, on the server's own thread.
+        FatalError("%s", (char *) closure);
+    }, nullptr, copy);
+    lorieWakeServer();
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_termux_x11_CmdEntryPoint_listenForConnections(JNIEnv *env, jobject thiz) {
-    int server_fd, client, count;
-    struct sockaddr_in address = { .sin_family = AF_INET, .sin_port = htons(PORT), .sin_addr = { .s_addr = INADDR_ANY } };
-    int addrlen = sizeof(address);
-    jmethodID sendBroadcast = env->GetMethodID(env->GetObjectClass(thiz), "sendBroadcast", "()V");
-    uint8_t buffer[512] = {0};
-    int reuse = 1;
+// Called from OsVendorInit() once the display number and "-tag" argument (if any) are resolved,
+// so the port to knock on and the tag to report back to Java are already known.
+void lorieListenForKnocks(int port, const char *tag) {
+    struct sockaddr_in address = { .sin_family = AF_INET, .sin_port = htons(port), .sin_addr = { .s_addr = INADDR_ANY } };
+    int fd, reuse = 1;
+
+    serverEnv->CallVoidMethod(thiz, setDocumentTag, tag ? serverEnv->NewStringUTF(tag) : nullptr);
 
     // Even in the case if it will fail for some reason everything will work fine
     // But connection will be delayed a bit
 
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        log(ERROR, "Socket creation failed: %s", strerror(errno));
+    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        log(ERROR, "Failed to create the knock-listening socket: %s", strerror(errno));
+        serverEnv->CallVoidMethod(thiz, sendBroadcastDelayed);
         return;
     }
 
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
 
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-        log(ERROR, "Socket bind failed: %s", strerror(errno));
-        close(server_fd);
+    if (bind(fd, (struct sockaddr *) &address, sizeof(address)) < 0) {
+        log(ERROR, "Failed to bind the knock-listening socket to port %d: %s", port, strerror(errno));
+        close(fd);
+        serverEnv->CallVoidMethod(thiz, sendBroadcastDelayed);
         return;
     }
 
-    if (listen(server_fd, 5) < 0) {
-        log(ERROR, "Socket listen failed: %s", strerror(errno));
-        close(server_fd);
+    if (listen(fd, 5) < 0) {
+        log(ERROR, "Failed to listen on the knock-listening socket: %s", strerror(errno));
+        close(fd);
+        serverEnv->CallVoidMethod(thiz, sendBroadcastDelayed);
         return;
     }
 
-    while(true) {
-        if ((client = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0) {
-            log(ERROR, "Socket accept failed: %s", strerror(errno));
-            continue;
+    SetNotifyFd(fd, +[](int fd, int ready, __unused void *data) {
+        struct sockaddr_in address;
+        socklen_t addrlen = sizeof(address);
+        uint8_t buffer[512] = {0};
+        int client, count;
+
+        if (ready & X_NOTIFY_ERROR) {
+            RemoveNotifyFd(fd);
+            close(fd);
+            return;
         }
 
-        if ((count = read(client, buffer, sizeof(buffer))) > 0) {
-            if (!memcmp(buffer, MAGIC, min(count, sizeof(MAGIC)))) {
-                log(DEBUG, "New client connection!\n");
-                env->CallVoidMethod(thiz, sendBroadcast);
-            }
+        if ((client = accept(fd, (struct sockaddr *) &address, &addrlen)) < 0) {
+            log(ERROR, "Failed to accept a connection on the knock-listening socket: %s", strerror(errno));
+            return;
+        }
+
+        if (poll((struct pollfd[]) {{ .fd = client, .events = POLLIN }}, 1, 200) > 0 &&
+            (count = recv(client, buffer, sizeof(buffer), MSG_DONTWAIT)) > 0 &&
+            !memcmp(buffer, MAGIC, min(count, sizeof(MAGIC)))) {
+            log(DEBUG, "New client connection!\n");
+            serverEnv->CallVoidMethod(thiz, sendBroadcast);
         }
         close(client);
-    }
+    }, X_NOTIFY_READ, NULL);
+
+    serverEnv->CallVoidMethod(thiz, sendBroadcastDelayed);
+}
+
+void registerCmdEntryPointNatives(JNIEnv *env) {
+    static JNINativeMethod methods[] = {
+            {"start", "([Ljava/lang/String;)Z", (void *) &start},
+            {"getXConnection", "()Landroid/os/ParcelFileDescriptor;", (void *) &getXConnection},
+            {"windowChanged", "(Landroid/view/Surface;)V", (void *) &windowChanged},
+            {"getLogcatOutput", "()Landroid/os/ParcelFileDescriptor;", (void *) &getLogcatOutput},
+            {"reportFatalError", "(Ljava/lang/String;)V", (void *) &reportFatalError},
+            {"connected", "()Z", (void *) +[]() -> jboolean { return conn_fd != -1; }}, // @CriticalNative
+    };
+    jclass cls = env->FindClass("com/termux/x11/CmdEntryPoint");
+    env->RegisterNatives(cls, methods, sizeof(methods)/sizeof(methods[0]));
 }
 
 void abort(void) {

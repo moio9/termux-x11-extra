@@ -1,3 +1,12 @@
+> **Termux:X11-Extra preview:** The Android application ID is
+> `com.termux.x11.extra`, so it can be installed alongside `com.termux.x11`.
+> Preferences and Android app data are separate and do not migrate automatically.
+> Install the matching `termux-x11-extra` companion package and use
+> `termux-x11-extra` / `termux-x11-extra-preference` in Termux. The companion
+> uses separate paths and does not replace the regular Termux:X11 commands.
+> For multiple controllers, enable **Controller → Separate controllers in X11**.
+> Games may need their own integration to consume separate XInput2 devices.
+
 # Termux:X11-Extra
 
 A Termux:X11 fork but with extra features.
@@ -87,6 +96,19 @@ For some reason some devices show screen with swapped colours, in this case you 
 ~ $ termux-x11 :1 -force-bgra -xstartup "xfce4-session"
 ```
 
+## Running multiple displays as separate windows
+Each display normally shares the single Termux:X11 window. Pass `-tag <tag>` to open a display as its own Android window instead:
+```
+termux-x11 :1 -tag main -xstartup "xfce4-session"
+termux-x11 :2 -tag second -xstartup "xfce4-session"
+```
+Re-running a tag brings its window back to front instead of opening a duplicate.
+
+To bring up a tagged window's activity:
+```
+am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity -d main
+```
+
 ## Using with proot environment
 If you plan to use the program with proot, keep in mind that you need to launch proot/proot-distro with the --shared-tmp option. 
 If passing this option is not possible, set the TMPDIR environment variable to point to the directory that corresponds to /tmp in the target container.
@@ -128,6 +150,11 @@ pkill -f com.termux.x11
 
 ```
 am broadcast -a com.termux.x11.ACTION_STOP -p com.termux.x11
+```
+
+To close a window opened with `-tag`:
+```
+am broadcast -a com.termux.x11.ACTION_STOP -p com.termux.x11 --es document_tag main
 ```
 
 ### Opening Termux:X11 activity from command line

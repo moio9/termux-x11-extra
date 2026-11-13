@@ -19,10 +19,10 @@ import org.apache.tools.ant.filters.ReplaceTokens
 
 import java.security.MessageDigest
 
-def pkgName = 'termux-x11-nightly'
+def pkgName = 'termux-x11-extra'
 def pkgVersion = (file("$rootDir/lorie/version.gradle").text =~ /version = "([^"]+)"/)[0][1] + '-0'
-def pkgDescription = 'Companion package for termux-x11 app'
-def pkgHomepage = 'https://github.com/termux/termux-x11'
+def pkgDescription = 'Companion package for Termux:X11-Extra'
+def pkgHomepage = 'https://github.com/moio9/termux-x11-extra'
 def pkgMaintainer = 'Twaik Yont @twaik'
 def pkgDepends = 'xkeyboard-config'
 
@@ -33,7 +33,7 @@ def pacmanFile = new File(outputDir, "$pkgName-$pkgVersion-any.pkg.tar.xz")
 tasks.register('generateWrapperScripts', Copy) {
     from 'scripts'
     include '*.in'
-    rename { it - '.in' }
+    rename { (it - '.in').replaceFirst('termux-x11', 'termux-x11-extra') }
     into layout.buildDirectory.dir('generated/scripts')
     filter(ReplaceTokens, tokens: [APPLICATION_ID: targetApplicationId, EMBEDDED_APPLICATION_ID: embeddedApplicationId])
     filePermissions { unix(0755) }
@@ -54,10 +54,10 @@ tasks.register('buildCompanionPackage') {
         int time = (System.currentTimeMillis() / 1000L) as int
         def prefix = "data/data/$embeddedApplicationId/files/usr".toString()
 
-        def scripts = ['termux-x11', 'termux-x11-preference'].collectEntries {
+        def scripts = ['termux-x11-extra', 'termux-x11-extra-preference'].collectEntries {
             ["$prefix/bin/$it".toString(), file("${scriptsDir.get()}/$it").bytes]
         }
-        def content = scripts + [("$prefix/libexec/termux-x11/loader.apk".toString()): loaderApk.get().asFile.bytes]
+        def content = scripts + [("$prefix/libexec/termux-x11-extra/loader.apk".toString()): loaderApk.get().asFile.bytes]
         // Every file plus the directories leading to it; sorting the whole set puts each directory
         // right before its contents, which is the order both archives expect.
         def paths = content.keySet().collectMany { path ->
@@ -84,7 +84,7 @@ Homepage: $pkgHomepage
 Depends: $pkgDepends
 Description: $pkgDescription
 """
-        def chmodLoader = "chmod 400 /$prefix/libexec/termux-x11/loader.apk"
+        def chmodLoader = "chmod 400 /$prefix/libexec/termux-x11-extra/loader.apk"
 
         def controlTarGz = new ByteArrayOutputStream()
         new TarArchiveOutputStream(new GzipCompressorOutputStream(controlTarGz)).withCloseable { tar ->
@@ -144,9 +144,6 @@ packager = $pkgMaintainer
 size = ${content.values().sum { it.length }}
 arch = any
 license = GPL-3.0
-replaces = termux-x11
-conflict = termux-x11
-provides = termux-x11
 ${pacmanDepends.join('\n')}
 """.bytes,
         ]

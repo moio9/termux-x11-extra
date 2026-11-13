@@ -123,6 +123,7 @@
             app:title="Captured pointer speed factor" />
         <SwitchPreferenceCompat app:key="tapToMove" app:defaultValue="false" app:title="Tap to move (trackpad mode)" />
         <SwitchPreferenceCompat app:key="ignoreGamepadEvents" app:defaultValue="false" />
+        <SwitchPreferenceCompat app:key="zoomFollowsCursor" app:defaultValue="true" />
     </PreferenceScreen>
 
     <!-- KEYBOARD -->
@@ -233,6 +234,12 @@
             app:key="gamepadForwardX11"
             app:title="Forward gamepad to X11"
             app:defaultValue="true" />
+
+        <SwitchPreferenceCompat
+            app:key="gamepadSeparateX11Devices"
+            app:title="Separate controllers in X11"
+            app:defaultValue="false"
+            app:summary="Expose up to four physical gamepads independently for compatible games." />
 
         <EditTextPreference
             app:key="gamepadName"

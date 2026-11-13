@@ -2,7 +2,6 @@ package com.termux.x11.utils;
 
 import static android.os.Build.VERSION.SDK_INT;
 
-import android.app.Activity;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Build.VERSION_CODES;
@@ -24,7 +23,7 @@ public class ImeHeightProvider {
     // an invisible zero-width PopupWindow which declares ADJUST_RESIZE and is resized by the system
     // in the activity's stead. For the technique, see https://github.com/turnsk/keyboardheight
 
-    public static void assistActivity(Activity activity) {
+    public static void assistActivity(MainActivity activity) {
         FrameLayout content = activity.findViewById(android.R.id.content);
 
         if (SDK_INT >= VERSION_CODES.R) {
@@ -58,7 +57,7 @@ public class ImeHeightProvider {
             sensor.getWindowVisibleDisplayFrame(visibleFrame);
 
             DisplayMetrics metrics = new DisplayMetrics();
-            MainActivity.getRealMetrics(metrics);
+            activity.getRealMetrics(metrics);
 
             report(activity, content, metrics.heightPixels - visibleFrame.bottom, ViewCompat.getRootWindowInsets(content));
         });
@@ -66,18 +65,14 @@ public class ImeHeightProvider {
 
     // Both sources measure from the bottom of the screen, so they include the navigation bar
     // whenever it is shown below the keyboard - that space is already handled by fitsSystemWindows.
-    private static void report(Activity activity, FrameLayout content, int bottom, WindowInsetsCompat insets) {
+    private static void report(MainActivity activity, FrameLayout content, int bottom, WindowInsetsCompat insets) {
         View child = content.getChildAt(0);
-        // Whatever part of the caption bar is left here is the one the window was not laid out below.
-        MainActivity.getInstance().setCaptionHeight((insets != null && !child.getFitsSystemWindows())
-                ? insets.getInsets(WindowInsetsCompat.Type.captionBar()).top : 0);
-
         int imeHeight = 0;
         if (activity.hasWindowFocus() && !SamsungDexUtils.checkDeXEnabled(activity) && !activity.isInPictureInPictureMode()) {
             int navBottom = (insets != null && child.getFitsSystemWindows())
                     ? insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom : 0;
             imeHeight = Math.max(0, bottom - navBottom);
         }
-        MainActivity.getInstance().setImeHeight(imeHeight);
+        activity.setImeHeight(imeHeight);
     }
 }

@@ -22,6 +22,8 @@ import android.view.Surface;
 
 import androidx.annotation.Keep;
 
+import dalvik.annotation.optimization.CriticalNative;
+
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.URL;
@@ -29,9 +31,11 @@ import java.net.URL;
 @Keep @SuppressLint({"StaticFieldLeak", "UnsafeDynamicallyLoadedCode"})
 public class CmdEntryPoint extends ICmdEntryInterface.Stub {
     public static final String ACTION_START = "com.termux.x11.CmdEntryPoint.ACTION_START";
+    public static final String EXTRA_DOCUMENT_TAG = "document_tag";
     static final Handler handler;
     public static Context ctx;
     private final Intent intent = createIntent();
+    private boolean broadcastPending;
 
     /**
      * Command-line entry point.
@@ -39,6 +43,7 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
      * @param args The command-line arguments
      */
     public static void main(String[] args) {
+        initEntryPoint();
         android.util.Log.i("CmdEntryPoint", "commit " + BuildConfig.COMMIT);
         handler.post(() -> new CmdEntryPoint(args));
         Looper.loop();
@@ -47,9 +52,12 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
     CmdEntryPoint(String[] args) {
         if (!start(args))
             System.exit(1);
+    }
 
-        spawnListeningThread();
-        sendBroadcastDelayed();
+    // Called from native once OsVendorInit() resolves the "-tag" argument, if any.
+    void setDocumentTag(String tag) {
+        if (tag != null)
+            intent.putExtra(EXTRA_DOCUMENT_TAG, tag);
     }
 
     @SuppressLint({"WrongConstant", "PrivateApi"})
@@ -70,7 +78,17 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
     }
 
     private void sendBroadcast() {
-        sendBroadcast(intent);
+        // Called from native (the X server thread) on every knock on the port; coalesce
+        // bursts into a single broadcast fired 250ms later.
+        synchronized (this) {
+            if (broadcastPending)
+                return;
+            broadcastPending = true;
+        }
+        handler.postDelayed(() -> {
+            synchronized (this) { broadcastPending = false; }
+            sendBroadcast(intent);
+        }, 250);
     }
 
     static void sendBroadcast(Intent intent) {
@@ -129,10 +147,6 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
         handler.postDelayed(this::sendBroadcastDelayed, 1000);
     }
 
-    void spawnListeningThread() {
-        new Thread(this::listenForConnections).start();
-    }
-
     /** @noinspection DataFlowIssue*/
     @SuppressLint("DiscouragedPrivateApi")
     public static Context createContext() {
@@ -163,11 +177,12 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
         return context;
     }
 
-    public static native boolean start(String[] args);
+    public native boolean start(String[] args);
+    public native void windowChanged(Surface surface);
     public native ParcelFileDescriptor getXConnection();
     public native ParcelFileDescriptor getLogcatOutput();
-    private static native boolean connected();
-    private native void listenForConnections();
+    public native void reportFatalError(String message);
+    @CriticalNative private static native boolean connected();
 
     static {
         try {
@@ -177,9 +192,12 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
             Log.e("CmdEntryPoint", "Something went wrong when preparing MainLooper", e);
         }
         handler = new Handler();
+    }
+
+    private static void initEntryPoint() {
         ctx = createContext();
 
-        String path = "lib/" + Build.SUPPORTED_ABIS[0] + "/libXlorie.so";
+        String path = "lib/" + (android.os.Process.is64Bit() ? Build.SUPPORTED_64_BIT_ABIS[0] : Build.SUPPORTED_32_BIT_ABIS[0]) + "/libXlorie.so";
         ClassLoader loader = CmdEntryPoint.class.getClassLoader();
         URL res = loader != null ? loader.getResource(path) : null;
         String libPath = res != null ? res.getFile().replace("file:", "") : null;
@@ -189,12 +207,6 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
             } catch (Exception e) {
                 Log.e("CmdEntryPoint", "Failed to dlopen " + libPath, e);
                 System.err.println("Failed to load native library. Did you install the right apk? Try the universal one.");
-                System.exit(134);
-            }
-        } else {
-            // It is critical only when it is not running in Android application process
-            if (MainActivity.getInstance() == null) {
-                System.err.println("Failed to acquire native library. Did you install the right apk? Try the universal one.");
                 System.exit(134);
             }
         }
